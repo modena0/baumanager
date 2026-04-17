@@ -59,12 +59,12 @@ const APP_CODE = "bau2026";
     aufgaben:      Array.isArray(b.aufgaben) ? b.aufgaben : [],
   });
   setData({
-    mitarbeiter: ma.data?.length ? ma.data : INIT.mitarbeiter,
-    baustellen:  bs.data?.length ? bs.data.map(fixBS) : INIT.baustellen,
-    fahrzeuge:   fz.data?.length ? fz.data : INIT.fahrzeuge,
-    lager:       lg.data?.length ? lg.data : INIT.lager,
-    termine:     tr.data?.length ? tr.data : INIT.termine,
-  });
+  mitarbeiter: ma.data || [],
+  baustellen:  bs.data ? bs.data.map(fixBS) : [],
+  fahrzeuge:   fz.data || [],
+  lager:       lg.data || [],
+  termine:     tr.data || [],
+});
 }
     
   loadData();
