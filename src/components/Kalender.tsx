@@ -1,7 +1,7 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { C, ACCENT, T_ARTEN, T_COL, MN, DN } from "../lib/constants";
 
-export function TerminForm({ onSave, onCancel, prefill = {} as any, baustellen = [] as any[] }) {
+export function TerminForm({ onSave, onCancel, prefill = {} as any, baustellen = [] as any[] }: { onSave: any, onCancel: any, prefill?: any, baustellen?: any[] }) {
   const [f, setF] = useState({
     titel: prefill.titel || "", datum: prefill.datum || "", uhrzeit: prefill.uhrzeit || "",
     art: prefill.art || "Besprechung", baustelle: prefill.baustelle || "Alle",
@@ -119,7 +119,7 @@ export function Kalender({ termine, onSave, onDelete, compact, baustellen = [] a
     return <TerminForm onSave={(d: any) => { onSave({...formData,...d}); setFormData(null); }} onCancel={() => setFormData(null)} prefill={formData} baustellen={baustellen} />;
   }
 
-  const rows: JSX.Element[] = [];
+const rows: React.ReactElement[] = [];
   for (let ri=0; ri<Math.ceil(cells.length/7); ri++) {
     const row = cells.slice(ri*7, ri*7+7);
     rows.push(
