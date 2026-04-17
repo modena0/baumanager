@@ -44,12 +44,12 @@ export default function App() {
       supabase.from("termine").select("*"),
     ]);
     setData({
-      mitarbeiter: ma.data || INIT.mitarbeiter,
-      baustellen:  bs.data || INIT.baustellen,
-      fahrzeuge:   fz.data || INIT.fahrzeuge,
-      lager:       lg.data || INIT.lager,
-      termine:     tr.data || INIT.termine,
-    });
+  mitarbeiter: ma.data?.length ? ma.data : INIT.mitarbeiter,
+  baustellen:  bs.data?.length ? bs.data : INIT.baustellen,
+  fahrzeuge:   fz.data?.length ? fz.data : INIT.fahrzeuge,
+  lager:       lg.data?.length ? lg.data : INIT.lager,
+  termine:     tr.data?.length ? tr.data : INIT.termine,
+});
   }
   loadData();
 }, []);
