@@ -38,21 +38,35 @@ export default function App() {
 const APP_CODE = "bau2026";
   useEffect(() => {
   async function loadData() {
-    const [ma, bs, fz, lg, tr] = await Promise.all([
-      supabase.from("mitarbeiter").select("*"),
-      supabase.from("baustellen").select("*"),
-      supabase.from("fahrzeuge").select("*"),
-      supabase.from("lager").select("*"),
-      supabase.from("termine").select("*"),
-    ]);
-    setData({
-  mitarbeiter: ma.data?.length ? ma.data : INIT.mitarbeiter,
-  baustellen:  bs.data?.length ? bs.data : INIT.baustellen,
-  fahrzeuge:   fz.data?.length ? fz.data : INIT.fahrzeuge,
-  lager:       lg.data?.length ? lg.data : INIT.lager,
-  termine:     tr.data?.length ? tr.data : INIT.termine,
-});
-  }
+  const [ma, bs, fz, lg, tr] = await Promise.all([
+    supabase.from("mitarbeiter").select("*"),
+    supabase.from("baustellen").select("*"),
+    supabase.from("fahrzeuge").select("*"),
+    supabase.from("lager").select("*"),
+    supabase.from("termine").select("*"),
+  ]);
+  const fixArr = (val: any) => {
+    if (!val) return [];
+    if (Array.isArray(val)) return val;
+    return val.split(",").map((s: string) => s.trim()).filter(Boolean);
+  };
+  const fixBS = (b: any) => ({
+    ...b,
+    anforderungen: fixArr(b.anforderungen),
+    mitarbeiter:   fixArr(b.mitarbeiter),
+    fahrzeuge:     fixArr(b.fahrzeuge),
+    equipment:     fixArr(b.equipment),
+    aufgaben:      Array.isArray(b.aufgaben) ? b.aufgaben : [],
+  });
+  setData({
+    mitarbeiter: ma.data?.length ? ma.data : INIT.mitarbeiter,
+    baustellen:  bs.data?.length ? bs.data.map(fixBS) : INIT.baustellen,
+    fahrzeuge:   fz.data?.length ? fz.data : INIT.fahrzeuge,
+    lager:       lg.data?.length ? lg.data : INIT.lager,
+    termine:     tr.data?.length ? tr.data : INIT.termine,
+  });
+}
+    
   loadData();
 }, []);
 
