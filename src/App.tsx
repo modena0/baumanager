@@ -34,6 +34,8 @@ export default function App() {
   const [gpsStatus, setGpsStatus] = useState("Bereit");
   const [showPin,   setShowPin]   = useState(false);
   const [authed,    setAuthed]    = useState(false);
+  const [appUnlocked, setAppUnlocked] = useState(false);
+const APP_CODE = "bau2026";
   useEffect(() => {
   async function loadData() {
     const [ma, bs, fz, lg, tr] = await Promise.all([
@@ -157,6 +159,7 @@ export default function App() {
     onDetail: setDetailMA,
   };
 
+  if (!appUnlocked) {
   return (
     <div style={{ fontFamily:"system-ui,sans-serif", minHeight:"100vh", background:"#f0f4f3", display:"flex" }}>
 
@@ -227,4 +230,5 @@ export default function App() {
       )}
     </div>
   );
+}
 }
