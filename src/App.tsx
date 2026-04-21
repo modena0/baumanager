@@ -25,7 +25,6 @@ const MODULE_MAP: Record<number, ComponentType<any>> = {
   7: KITab,
 };
 
-// ── Hilfsfunktionen ────────────────────────────────────────────────────────────
 const fixArr = (val: any): any[] => {
   if (!val) return [];
   if (Array.isArray(val)) return val;
@@ -133,7 +132,6 @@ export default function App() {
     const { type, mode, initialForm } = modal;
     const id = initialForm.id;
     const p = { ...f };
-
     if (type === "mitarbeiter") {
       p.qualifikationen = f.qualifikationen ? f.qualifikationen.split(",").map((s: string) => s.trim()).filter(Boolean) : [];
       p.fuehrerschein   = f.fuehrerschein   ? f.fuehrerschein.split(",").map((s: string) => s.trim()).filter(Boolean) : [];
@@ -143,7 +141,6 @@ export default function App() {
       p.gutMit   = pn(f.gutMit);
       p.nichtMit = pn(f.nichtMit);
     }
-
     if (type === "baustellen") {
       p.anforderungen = f.anforderungen ? f.anforderungen.split(",").map((s: string) => s.trim()).filter(Boolean) : [];
       p.mitarbeiter   = Array.isArray(p.mitarbeiter) ? p.mitarbeiter : [];
@@ -151,7 +148,6 @@ export default function App() {
       p.equipment     = Array.isArray(p.equipment)   ? p.equipment   : [];
       p.aufgaben      = Array.isArray(p.aufgaben)    ? p.aufgaben    : [];
     }
-
     if (mode === "add") {
       const { data: neu } = await supabase.from(type).insert([p]).select();
       if (neu) setData((d: any) => {
@@ -187,18 +183,17 @@ export default function App() {
 
   const ActiveModule = MODULE_MAP[tab];
   const navLabel = (NAV.find(n => n.id === tab) || { label: "Dashboard" }).label;
+  const SW = sidebarOpen ? 200 : 60;
 
   const moduleProps = {
     data, setData, setTab,
     openAdd, openEdit, deleteItem,
     saveTermin, deleteTermin,
-    callAI,
-    simulateGPS, gpsStatus,
+    callAI, simulateGPS, gpsStatus,
     onAdd: openAdd, onEdit: openEdit, onDelete: deleteItem,
     onDetail: setDetailMA,
   };
 
-  // ── Login ─────────────────────────────────────────────────────────────────────
   if (!appUnlocked) {
     return (
       <div style={{ fontFamily: "system-ui,sans-serif", minHeight: "100vh", background: "#f0f4f3", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -206,10 +201,7 @@ export default function App() {
           <div style={{ width: 52, height: 52, borderRadius: 12, background: ACCENT, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 700, color: "#fff", margin: "0 auto 16px" }}>BM</div>
           <div style={{ fontSize: 18, fontWeight: 700, color: "#222", marginBottom: 4 }}>BauManager</div>
           <div style={{ fontSize: 12, color: "#aaa", marginBottom: 24 }}>Bitte Zugangscode eingeben</div>
-          <input
-            id="code-input"
-            type="password"
-            placeholder="Zugangscode"
+          <input id="code-input" type="password" placeholder="Zugangscode"
             style={{ ...C.inp, textAlign: "center", fontSize: 16, letterSpacing: 4, marginBottom: 12 }}
             onKeyDown={e => { if (e.key === "Enter") { const v = (document.getElementById("code-input") as HTMLInputElement).value; if (v === APP_CODE) setAppUnlocked(true); } }}
           />
@@ -221,79 +213,38 @@ export default function App() {
     );
   }
 
-  const SW = sidebarOpen ? 200 : 60;
-
-  // ── Haupt-App ─────────────────────────────────────────────────────────────────
   return (
+    // Gesamte App: 100vh, KEIN Scrollen
     <div style={{ fontFamily: "system-ui,sans-serif", height: "100vh", overflow: "hidden", background: "#f0f4f3", display: "flex" }}>
 
-      {/* ── Sidebar ───────────────────────────────────────────────────────────── */}
-      <div style={{
-        width: SW,
-        minWidth: SW,
-        background: ACCENT,
-        height: "100vh",
-        display: "flex",
-        flexDirection: "column",
-        padding: "16px 0",
-        flexShrink: 0,
-        transition: "width 0.25s ease, min-width 0.25s ease",
-        overflow: "hidden",
-      }}>
-        {/* Logo + Toggle Button */}
+      {/* Sidebar */}
+      <div style={{ width: SW, minWidth: SW, background: ACCENT, height: "100vh", display: "flex", flexDirection: "column", padding: "16px 0", flexShrink: 0, transition: "width 0.25s ease, min-width 0.25s ease", overflow: "hidden" }}>
         <div style={{ padding: "0 10px 20px", display: "flex", alignItems: "center", justifyContent: sidebarOpen ? "space-between" : "center" }}>
           {sidebarOpen && (
             <div style={{ background: "#fff", borderRadius: 10, padding: "8px 10px", display: "flex", alignItems: "center", gap: 8, flex: 1, marginRight: 8 }}>
               <div style={{ width: 28, height: 28, borderRadius: 6, background: ACCENT, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#fff", flexShrink: 0 }}>BM</div>
-              <div>
-                <div style={{ fontSize: 10, fontWeight: 700, color: "#333" }}>BauManager</div>
-                <div style={{ fontSize: 8, color: "#aaa" }}>Pro</div>
-              </div>
+              <div><div style={{ fontSize: 10, fontWeight: 700, color: "#333" }}>BauManager</div><div style={{ fontSize: 8, color: "#aaa" }}>Pro</div></div>
             </div>
           )}
-          <button
-            onClick={() => setSidebarOpen(o => !o)}
-            title={sidebarOpen ? "Einklappen" : "Ausklappen"}
-            style={{ background: "rgba(255,255,255,0.15)", border: "none", borderRadius: 8, width: 30, height: 30, cursor: "pointer", color: "#fff", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
-          >
+          <button onClick={() => setSidebarOpen(o => !o)} style={{ background: "rgba(255,255,255,0.15)", border: "none", borderRadius: 8, width: 30, height: 30, cursor: "pointer", color: "#fff", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
             {sidebarOpen ? "◀" : "▶"}
           </button>
         </div>
-
-        {/* Nav */}
         <div style={{ flex: 1, overflowY: "auto" }}>
           {NAV.map(item => {
             const active = tab === item.id;
             return (
               <div key={item.id} style={{ position: "relative" }} title={!sidebarOpen ? item.label : ""}>
-                <button onClick={() => setTab(item.id)} style={{
-                  display: "flex", alignItems: "center", gap: 10,
-                  padding: sidebarOpen ? "11px 16px" : "11px 0",
-                  justifyContent: sidebarOpen ? "flex-start" : "center",
-                  border: "none",
-                  background: active ? "rgba(255,255,255,0.2)" : "transparent",
-                  cursor: "pointer",
-                  color: active ? "#fff" : "rgba(255,255,255,0.75)",
-                  fontSize: 13, fontWeight: active ? 600 : 400,
-                  borderLeft: active ? "3px solid #fff" : "3px solid transparent",
-                  boxSizing: "border-box", width: "100%",
-                  transition: "background 0.15s",
-                }}>
+                <button onClick={() => setTab(item.id)} style={{ display: "flex", alignItems: "center", gap: 10, padding: sidebarOpen ? "11px 16px" : "11px 0", justifyContent: sidebarOpen ? "flex-start" : "center", border: "none", background: active ? "rgba(255,255,255,0.2)" : "transparent", cursor: "pointer", color: active ? "#fff" : "rgba(255,255,255,0.75)", fontSize: 13, fontWeight: active ? 600 : 400, borderLeft: active ? "3px solid #fff" : "3px solid transparent", boxSizing: "border-box", width: "100%" }}>
                   <span style={{ fontSize: 16, flexShrink: 0 }}>{item.icon}</span>
                   {sidebarOpen && <span style={{ whiteSpace: "nowrap" }}>{item.label}</span>}
-                  {sidebarOpen && item.label === "Kalender" && pflichtCount > 0 && (
-                    <span style={{ marginLeft: "auto", background: "#E24B4A", color: "#fff", borderRadius: 10, fontSize: 10, padding: "1px 6px", fontWeight: 700 }}>{pflichtCount}</span>
-                  )}
-                  {!sidebarOpen && item.label === "Kalender" && pflichtCount > 0 && (
-                    <span style={{ position: "absolute", top: 6, right: 6, background: "#E24B4A", color: "#fff", borderRadius: "50%", fontSize: 9, width: 16, height: 16, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{pflichtCount}</span>
-                  )}
+                  {sidebarOpen && item.label === "Kalender" && pflichtCount > 0 && <span style={{ marginLeft: "auto", background: "#E24B4A", color: "#fff", borderRadius: 10, fontSize: 10, padding: "1px 6px", fontWeight: 700 }}>{pflichtCount}</span>}
+                  {!sidebarOpen && item.label === "Kalender" && pflichtCount > 0 && <span style={{ position: "absolute", top: 6, right: 6, background: "#E24B4A", color: "#fff", borderRadius: "50%", fontSize: 9, width: 16, height: 16, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{pflichtCount}</span>}
                 </button>
               </div>
             );
           })}
         </div>
-
-        {/* Admin */}
         <div style={{ padding: "12px 8px 0" }}>
           <button onClick={() => setShowPin(true)} style={{ width: "100%", padding: "7px", borderRadius: 8, background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", cursor: "pointer", fontSize: 11 }}>
             {sidebarOpen ? (authed ? "Admin aktiv" : "Admin-Login") : "🔑"}
@@ -301,24 +252,24 @@ export default function App() {
         </div>
       </div>
 
-      {/* ── Main ─────────────────────────────────────────────────────────────── */}
+      {/* Main: flex column, 100vh, KEIN Scrollen */}
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
 
-        {/* Header */}
-        <div style={{ padding: "16px 24px 12px", flexShrink: 0, borderBottom: "1px solid #e8eaed", background: "#f0f4f3" }}>
-          <div style={{ fontSize: 18, fontWeight: 700, color: "#222" }}>{navLabel}</div>
-          <div style={{ fontSize: 11, color: "#bbb", marginTop: 2 }}>{new Date().toLocaleDateString("de-DE", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</div>
+        {/* Header: fix, schrumpft nicht */}
+        <div style={{ padding: "14px 20px 10px", flexShrink: 0, borderBottom: "1px solid #e8eaed", background: "#f0f4f3" }}>
+          <div style={{ fontSize: 17, fontWeight: 700, color: "#222" }}>{navLabel}</div>
+          <div style={{ fontSize: 11, color: "#bbb", marginTop: 1 }}>{new Date().toLocaleDateString("de-DE", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</div>
         </div>
-        {/* Scrollbarer Inhalt */}
-        <div style={{ flex: 1, overflowY: "auto", padding: 20, scrollbarWidth: "thin", scrollbarColor: "#d0d0d0 transparent" }}>
+
+        {/* Content: nimmt restliche Höhe, KEIN Scrollen nach außen */}
+        <div style={{ flex: 1, overflow: "hidden", padding: 16 }}>
           {ActiveModule && <ActiveModule {...moduleProps} />}
         </div>
       </div>
 
-      {/* ── Overlays ──────────────────────────────────────────────────────────── */}
+      {/* Overlays */}
       {showPin && <PinModal onSuccess={() => { setAuthed(true); setShowPin(false); }} onCancel={() => setShowPin(false)} />}
       {modal && <EditModal modalType={modal.type} modalMode={modal.mode} initialForm={modal.initialForm} onSave={saveItem} onClose={closeModal} />}
-
       {detailMA && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }} onClick={e => { if (e.target === e.currentTarget) setDetailMA(null); }}>
           <div style={{ ...C.card, width: "min(500px,95vw)", maxHeight: "90vh", overflowY: "auto" }}>

@@ -38,74 +38,78 @@ export function Dashboard({ data, setTab, saveTermin, deleteTermin }: any) {
   };
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 14, alignItems: "start" }}>
+    // Gesamtes Dashboard: füllt den Container exakt, KEIN Overflow
+    <div style={{
+      display: "grid",
+      gridTemplateColumns: "1fr 320px",
+      gap: 14,
+      height: "100%",   // füllt den Content-Bereich aus App.tsx
+      overflow: "hidden", // KEIN Scrollen
+    }}>
 
       {/* ── LINKE SPALTE ─────────────────────────────────────────────────────── */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ ...C.card, display: "flex", flexDirection: "column", overflow: "hidden", height: "100%" }}>
 
-        {/* Aktive Baustellen – max-height + scroll */}
-        <div style={{ ...C.card }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-            <span style={{ fontSize: 14, fontWeight: 700, color: "#222" }}>Aktive Baustellen</span>
-            <button onClick={() => setTab(3)} style={{ fontSize: 11, color: ACCENT, background: "none", border: "none", cursor: "pointer", fontWeight: 500 }}>Alle anzeigen →</button>
-          </div>
-
-          {/* Scrollbarer Bereich mit fester max-height */}
-          <div style={{ maxHeight: 280, overflowY: "auto", paddingRight: 2 }}>
-            {sorted.map((b: any, idx: number) => {
-              const col = bsColors[idx % bsColors.length];
-              const prog = getProgress(b);
-              const auf = b.aufgaben || [];
-              const done = auf.filter((a: any) => a.erledigt).length;
-              const dl = Math.ceil((new Date(b.ende).getTime() - Date.now()) / 86400000);
-              return (
-                <div key={b.id} style={{
-                  background: col + "28",
-                  borderRadius: 8,
-                  padding: "7px 10px",
-                  marginBottom: 6,
-                  border: "1.5px solid " + col,
-                  transition: "transform 0.12s, box-shadow 0.12s",
-                }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)"; (e.currentTarget as HTMLElement).style.boxShadow = "0 3px 10px rgba(0,0,0,0.07)"; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ""; (e.currentTarget as HTMLElement).style.boxShadow = ""; }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
-                    <div>
-                      <span style={{ fontWeight: 600, fontSize: 12, color: "#222" }}>{b.name}</span>
-                      <span style={{ fontSize: 10, color: "#888", marginLeft: 6 }}>{b.ort}</span>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: ACCENT }}>{prog}%</span>
-                      <span style={{ fontSize: 9, color: dl <= 14 ? "#E24B4A" : "#bbb" }}>{dl}d</span>
-                    </div>
-                  </div>
-                  <div style={{ height: 3, background: "rgba(0,0,0,0.08)", borderRadius: 2, marginBottom: 4 }}>
-                    <div style={{ height: "100%", width: prog + "%", background: ACCENT, borderRadius: 2 }} />
-                  </div>
-                  {auf.length > 0 && (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 3, alignItems: "center" }}>
-                      {auf.slice(0, 3).map((a: any) => (
-                        <span key={a.id} style={{ fontSize: 9, padding: "1px 5px", borderRadius: 6, background: a.erledigt ? ACCENT + "22" : "#f0f0f0", color: a.erledigt ? ACCENT : "#aaa", textDecoration: a.erledigt ? "line-through" : "none" }}>{a.titel}</span>
-                      ))}
-                      {auf.length > 3 && <span style={{ fontSize: 9, color: "#bbb" }}>+{auf.length - 3}</span>}
-                      <span style={{ fontSize: 9, color: "#bbb", marginLeft: "auto" }}>{done}/{auf.length} ✓</span>
-                    </div>
-                  )}
-                  {auf.length === 0 && <div style={{ fontSize: 9, color: "#ccc", fontStyle: "italic" }}>Keine Aufgaben</div>}
-                </div>
-              );
-            })}
-          </div>
+        {/* Header – fix */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexShrink: 0 }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: "#222" }}>Aktive Baustellen</span>
+          <button onClick={() => setTab(3)} style={{ fontSize: 11, color: ACCENT, background: "none", border: "none", cursor: "pointer", fontWeight: 500 }}>Alle anzeigen →</button>
         </div>
 
+        {/* ← NUR DIESE LISTE SCROLLT */}
+        <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
+          {sorted.map((b: any, idx: number) => {
+            const col = bsColors[idx % bsColors.length];
+            const prog = getProgress(b);
+            const auf = b.aufgaben || [];
+            const done = auf.filter((a: any) => a.erledigt).length;
+            const dl = Math.ceil((new Date(b.ende).getTime() - Date.now()) / 86400000);
+            return (
+              <div key={b.id} style={{
+                background: col + "28",
+                borderRadius: 8,
+                padding: "7px 10px",
+                marginBottom: 6,
+                border: "1.5px solid " + col,
+                transition: "transform 0.12s, box-shadow 0.12s",
+              }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)"; (e.currentTarget as HTMLElement).style.boxShadow = "0 3px 10px rgba(0,0,0,0.07)"; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ""; (e.currentTarget as HTMLElement).style.boxShadow = ""; }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
+                  <div>
+                    <span style={{ fontWeight: 600, fontSize: 12, color: "#222" }}>{b.name}</span>
+                    <span style={{ fontSize: 10, color: "#888", marginLeft: 6 }}>{b.ort}</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: ACCENT }}>{prog}%</span>
+                    <span style={{ fontSize: 9, color: dl <= 14 ? "#E24B4A" : "#bbb" }}>{dl}d</span>
+                  </div>
+                </div>
+                <div style={{ height: 3, background: "rgba(0,0,0,0.08)", borderRadius: 2, marginBottom: 4 }}>
+                  <div style={{ height: "100%", width: prog + "%", background: ACCENT, borderRadius: 2 }} />
+                </div>
+                {auf.length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 3, alignItems: "center" }}>
+                    {auf.slice(0, 3).map((a: any) => (
+                      <span key={a.id} style={{ fontSize: 9, padding: "1px 5px", borderRadius: 6, background: a.erledigt ? ACCENT + "22" : "#f0f0f0", color: a.erledigt ? ACCENT : "#aaa", textDecoration: a.erledigt ? "line-through" : "none" }}>{a.titel}</span>
+                    ))}
+                    {auf.length > 3 && <span style={{ fontSize: 9, color: "#bbb" }}>+{auf.length - 3}</span>}
+                    <span style={{ fontSize: 9, color: "#bbb", marginLeft: "auto" }}>{done}/{auf.length} ✓</span>
+                  </div>
+                )}
+                {auf.length === 0 && <div style={{ fontSize: 9, color: "#ccc", fontStyle: "italic" }}>Keine Aufgaben</div>}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
-      {/* ── RECHTE SPALTE ────────────────────────────────────────────────────── */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* ── RECHTE SPALTE: alle fix, kein Scroll ─────────────────────────────── */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, height: "100%", overflow: "hidden" }}>
 
-        {/* Kalender */}
-        <div style={{ ...C.card }}>
+        {/* Kalender – fix */}
+        <div style={{ ...C.card, flexShrink: 0 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: "#222" }}>Kalender</span>
             <button onClick={() => setTab(4)} style={{ fontSize: 11, color: ACCENT, background: "none", border: "none", cursor: "pointer", fontWeight: 500 }}>Vollansicht</button>
@@ -113,9 +117,9 @@ export function Dashboard({ data, setTab, saveTermin, deleteTermin }: any) {
           <Kalender termine={data.termine || []} onSave={saveTermin} onDelete={deleteTermin} compact={true} baustellen={data.baustellen} />
         </div>
 
-        {/* Heute */}
+        {/* Heute – fix */}
         {heuteTermine.length > 0 && (
-          <div style={{ ...C.card }}>
+          <div style={{ ...C.card, flexShrink: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: "#222", marginBottom: 8 }}>📅 Heute</div>
             {heuteTermine.map((t: any) => (
               <div key={t.id} style={{ display: "flex", gap: 8, padding: "5px 0", borderBottom: "1px solid #f5f5f5", alignItems: "center" }}>
@@ -129,8 +133,8 @@ export function Dashboard({ data, setTab, saveTermin, deleteTermin }: any) {
           </div>
         )}
 
-        {/* KI Hilfe */}
-        <div style={{ ...C.card }}>
+        {/* KI Hilfe – fix */}
+        <div style={{ ...C.card, flexShrink: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: "#222", marginBottom: 8 }}>✦ KI Hilfe</div>
           <div style={{ display: "flex", gap: 4, marginBottom: 7, flexWrap: "wrap" }}>
             {[["Auslastung", "Kurze Zusammenfassung der aktuellen Auslastung."], ["Engpässe", "Kritische Engpaesse?"], ["Heute", "Was sollte ich heute zuerst tun?"]].map(q => (
