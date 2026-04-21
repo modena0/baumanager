@@ -24,6 +24,7 @@ const fixArr = (val: any): any[] => {
   if (Array.isArray(val)) return val;
   return val.split(",").map((s: string) => s.trim()).filter(Boolean);
 };
+
 const fixBS = (b: any) => ({
   ...b,
   anforderungen: fixArr(b.anforderungen),
@@ -42,7 +43,8 @@ export default function App() {
   const [showPin,     setShowPin]     = useState(false);
   const [authed,      setAuthed]      = useState(false);
   const [appUnlocked, setAppUnlocked] = useState(false);
-  const [hovered,     setHovered]     = useState(false); // ← Hover-State
+  const [hovered,     setHovered]     = useState(false);
+  const [selectedBS,  setSelectedBS]  = useState<number|null>(null); // ← ausgewählte Baustelle
   const APP_CODE = "bau2026";
 
   useEffect(() => {
@@ -79,36 +81,89 @@ export default function App() {
     if (d.id) { await supabase.from("termine").update(d).eq("id", d.id); setData((st: any) => ({ ...st, termine: st.termine.map((t: any) => t.id === d.id ? d : t) })); }
     else { const { data: neu } = await supabase.from("termine").insert([d]).select(); if (neu) setData((st: any) => ({ ...st, termine: [...(st.termine || []), neu[0]] })); }
   };
-  const deleteTermin = async (id: number) => { await supabase.from("termine").delete().eq("id", id); setData((d: any) => ({ ...d, termine: d.termine.filter((t: any) => t.id !== id) })); };
 
-  const openAdd = (type: string) => { const init = type === "baustellen" ? { mitarbeiter: [], fahrzeuge: [], equipment: [], aufgaben: [] } : {}; setModal({ type, mode: "add", initialForm: init }); };
+  const deleteTermin = async (id: number) => {
+    await supabase.from("termine").delete().eq("id", id);
+    setData((d: any) => ({ ...d, termine: d.termine.filter((t: any) => t.id !== id) }));
+  };
+
+  const openAdd = (type: string) => {
+    const init = type === "baustellen" ? { mitarbeiter: [], fahrzeuge: [], equipment: [], aufgaben: [] } : {};
+    setModal({ type, mode: "add", initialForm: init });
+  };
+
   const openEdit = (type: string, item: any) => {
     const f = { ...item };
     if (type === "mitarbeiter") {
-      f.qualifikationen = (item.qualifikationen || []).join(", "); f.fuehrerschein = (item.fuehrerschein || []).join(", ");
-      f.gutMit = (item.gutMit || []).map((id: number) => { const m = data.mitarbeiter.find((x: any) => x.id === id); return m ? m.name : ""; }).join(", ");
+      f.qualifikationen = (item.qualifikationen || []).join(", ");
+      f.fuehrerschein   = (item.fuehrerschein   || []).join(", ");
+      f.gutMit   = (item.gutMit  || []).map((id: number) => { const m = data.mitarbeiter.find((x: any) => x.id === id); return m ? m.name : ""; }).join(", ");
       f.nichtMit = (item.nichtMit || []).map((id: number) => { const m = data.mitarbeiter.find((x: any) => x.id === id); return m ? m.name : ""; }).join(", ");
     }
     if (type === "baustellen") f.anforderungen = (item.anforderungen || []).join(", ");
     setModal({ type, mode: "edit", initialForm: f });
   };
+
   const closeModal = () => setModal(null);
-  const pn = (str: string) => (str || "").split(",").map((s: string) => s.trim()).filter(Boolean).map((n: string) => { const m = data.mitarbeiter.find((x: any) => x.name.toLowerCase().includes(n.toLowerCase())); return m ? m.id : null; }).filter(Boolean);
+
+  const pn = (str: string) =>
+    (str || "").split(",").map((s: string) => s.trim()).filter(Boolean)
+      .map((n: string) => { const m = data.mitarbeiter.find((x: any) => x.name.toLowerCase().includes(n.toLowerCase())); return m ? m.id : null; })
+      .filter(Boolean);
 
   const saveItem = async (f: any) => {
     const { type, mode, initialForm } = modal; const id = initialForm.id; const p = { ...f };
-    if (type === "mitarbeiter") { p.qualifikationen = f.qualifikationen ? f.qualifikationen.split(",").map((s: string) => s.trim()).filter(Boolean) : []; p.fuehrerschein = f.fuehrerschein ? f.fuehrerschein.split(",").map((s: string) => s.trim()).filter(Boolean) : []; p.stundenlohn = parseFloat(f.stundenlohn) || 0; p.urlaubstage = parseInt(f.urlaubstage) || 0; p.urlaubGenommen = parseInt(f.urlaubGenommen) || 0; p.gutMit = pn(f.gutMit); p.nichtMit = pn(f.nichtMit); }
-    if (type === "baustellen") { p.anforderungen = f.anforderungen ? f.anforderungen.split(",").map((s: string) => s.trim()).filter(Boolean) : []; p.mitarbeiter = Array.isArray(p.mitarbeiter) ? p.mitarbeiter : []; p.fahrzeuge = Array.isArray(p.fahrzeuge) ? p.fahrzeuge : []; p.equipment = Array.isArray(p.equipment) ? p.equipment : []; p.aufgaben = Array.isArray(p.aufgaben) ? p.aufgaben : []; }
-    if (mode === "add") { const { data: neu } = await supabase.from(type).insert([p]).select(); if (neu) setData((d: any) => { const n = { ...d }; const item = type === "baustellen" ? fixBS(neu[0]) : neu[0]; n[type] = [...(d[type] || []), item]; return n; }); }
-    else { await supabase.from(type).update(p).eq("id", id); setData((d: any) => { const n = { ...d }; const item = type === "baustellen" ? fixBS({ ...p, id }) : { ...p, id }; n[type] = d[type].map((x: any) => x.id === id ? item : x); return n; }); }
+    if (type === "mitarbeiter") {
+      p.qualifikationen = f.qualifikationen ? f.qualifikationen.split(",").map((s: string) => s.trim()).filter(Boolean) : [];
+      p.fuehrerschein   = f.fuehrerschein   ? f.fuehrerschein.split(",").map((s: string) => s.trim()).filter(Boolean) : [];
+      p.stundenlohn     = parseFloat(f.stundenlohn) || 0;
+      p.urlaubstage     = parseInt(f.urlaubstage)   || 0;
+      p.urlaubGenommen  = parseInt(f.urlaubGenommen) || 0;
+      p.gutMit   = pn(f.gutMit);
+      p.nichtMit = pn(f.nichtMit);
+    }
+    if (type === "baustellen") {
+      p.anforderungen = f.anforderungen ? f.anforderungen.split(",").map((s: string) => s.trim()).filter(Boolean) : [];
+      p.mitarbeiter   = Array.isArray(p.mitarbeiter) ? p.mitarbeiter : [];
+      p.fahrzeuge     = Array.isArray(p.fahrzeuge)   ? p.fahrzeuge   : [];
+      p.equipment     = Array.isArray(p.equipment)   ? p.equipment   : [];
+      p.aufgaben      = Array.isArray(p.aufgaben)    ? p.aufgaben    : [];
+    }
+    if (mode === "add") {
+      const { data: neu } = await supabase.from(type).insert([p]).select();
+      if (neu) setData((d: any) => { const n = { ...d }; const item = type === "baustellen" ? fixBS(neu[0]) : neu[0]; n[type] = [...(d[type] || []), item]; return n; });
+    } else {
+      await supabase.from(type).update(p).eq("id", id);
+      setData((d: any) => { const n = { ...d }; const item = type === "baustellen" ? fixBS({ ...p, id }) : { ...p, id }; n[type] = d[type].map((x: any) => x.id === id ? item : x); return n; });
+    }
     closeModal();
   };
-  const deleteItem = async (type: string, id: number) => { await supabase.from(type).delete().eq("id", id); setData((d: any) => { const n = { ...d }; n[type] = d[type].filter((x: any) => x.id !== id); return n; }); };
-  const simulateGPS = () => { setGpsStatus("Aktualisiere..."); setTimeout(() => { setData((d: any) => ({ ...d, fahrzeuge: d.fahrzeuge.map((f: any) => ({ ...f, lat: f.lat + (Math.random() - 0.5) * 0.008, lng: f.lng + (Math.random() - 0.5) * 0.008 })) })); setGpsStatus("Aktualisiert " + new Date().toLocaleTimeString("de-DE")); }, 800); };
+
+  const deleteItem = async (type: string, id: number) => {
+    await supabase.from(type).delete().eq("id", id);
+    setData((d: any) => { const n = { ...d }; n[type] = d[type].filter((x: any) => x.id !== id); return n; });
+  };
+
+  const simulateGPS = () => {
+    setGpsStatus("Aktualisiere...");
+    setTimeout(() => {
+      setData((d: any) => ({ ...d, fahrzeuge: d.fahrzeuge.map((f: any) => ({ ...f, lat: f.lat + (Math.random() - 0.5) * 0.008, lng: f.lng + (Math.random() - 0.5) * 0.008 })) }));
+      setGpsStatus("Aktualisiert " + new Date().toLocaleTimeString("de-DE"));
+    }, 800);
+  };
 
   const ActiveModule = MODULE_MAP[tab];
   const navLabel = (NAV.find(n => n.id === tab) || { label: "Dashboard" }).label;
-  const moduleProps = { data, setData, setTab, openAdd, openEdit, deleteItem, saveTermin, deleteTermin, callAI, simulateGPS, gpsStatus, onAdd: openAdd, onEdit: openEdit, onDelete: deleteItem, onDetail: setDetailMA };
+
+  const moduleProps = {
+    data, setData, setTab,
+    openAdd, openEdit, deleteItem,
+    saveTermin, deleteTermin,
+    callAI, simulateGPS, gpsStatus,
+    onAdd: openAdd, onEdit: openEdit, onDelete: deleteItem,
+    onDetail: setDetailMA,
+    selectedBS, setSelectedBS, // ← weitergegeben an alle Module
+  };
 
   // ── Login ─────────────────────────────────────────────────────────────────────
   if (!appUnlocked) {
@@ -118,44 +173,45 @@ export default function App() {
           <div style={{ width: 52, height: 52, borderRadius: 12, background: ACCENT, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 700, color: "#fff", margin: "0 auto 16px" }}>BM</div>
           <div style={{ fontSize: 18, fontWeight: 700, color: "#222", marginBottom: 4 }}>BauManager</div>
           <div style={{ fontSize: 12, color: "#aaa", marginBottom: 24 }}>Bitte Zugangscode eingeben</div>
-          <input id="code-input" type="password" placeholder="Zugangscode" style={{ ...C.inp, textAlign: "center", fontSize: 16, letterSpacing: 4, marginBottom: 12 }} onKeyDown={e => { if (e.key === "Enter") { const v = (document.getElementById("code-input") as HTMLInputElement).value; if (v === APP_CODE) setAppUnlocked(true); } }} />
-          <button style={{ ...C.btnP, width: "100%" }} onClick={() => { const v = (document.getElementById("code-input") as HTMLInputElement).value; if (v === APP_CODE) setAppUnlocked(true); }}>Einloggen</button>
+          <input id="code-input" type="password" placeholder="Zugangscode"
+            style={{ ...C.inp, textAlign: "center", fontSize: 16, letterSpacing: 4, marginBottom: 12 }}
+            onKeyDown={e => { if (e.key === "Enter") { const v = (document.getElementById("code-input") as HTMLInputElement).value; if (v === APP_CODE) setAppUnlocked(true); } }}
+          />
+          <button style={{ ...C.btnP, width: "100%" }} onClick={() => { const v = (document.getElementById("code-input") as HTMLInputElement).value; if (v === APP_CODE) setAppUnlocked(true); }}>
+            Einloggen
+          </button>
         </div>
       </div>
     );
   }
 
-  // Sidebar-Breite: schmal im Ruhezustand, breit bei Hover
-  const SW = hovered ? 200 : 64;
-
+  // ── Haupt-App ─────────────────────────────────────────────────────────────────
   return (
     <div style={{ fontFamily: "system-ui,sans-serif", height: "100vh", overflow: "hidden", background: "#f0f4f3", display: "flex" }}>
 
-      {/* ── SIDEBAR ───────────────────────────────────────────────────────────── */}
+      {/* ── SIDEBAR: schmal standardmäßig, breit bei Hover ────────────────────── */}
       <div
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         style={{
-          width: SW,
-          minWidth: SW,
+          width: hovered ? 200 : 64,
+          minWidth: hovered ? 200 : 64,
           background: ACCENT,
           height: "100vh",
           display: "flex",
           flexDirection: "column",
           padding: "16px 0",
           flexShrink: 0,
-          // Sanfte Animation
           transition: "width 0.3s ease, min-width 0.3s ease",
           overflow: "hidden",
           zIndex: 10,
-          // Schatten nur wenn offen
           boxShadow: hovered ? "4px 0 20px rgba(0,0,0,0.15)" : "none",
         }}
       >
         {/* Logo */}
         <div style={{ padding: "0 12px 20px", display: "flex", alignItems: "center", gap: 10, overflow: "hidden" }}>
           <div style={{ width: 36, height: 36, borderRadius: 8, background: "rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#fff", flexShrink: 0 }}>BM</div>
-          <div style={{ opacity: hovered ? 1 : 0, transition: "opacity 0.2s ease", whiteSpace: "nowrap", overflow: "hidden" }}>
+          <div style={{ opacity: hovered ? 1 : 0, transition: "opacity 0.2s ease", whiteSpace: "nowrap" }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: "#fff" }}>BauManager</div>
             <div style={{ fontSize: 9, color: "rgba(255,255,255,0.6)" }}>Pro</div>
           </div>
@@ -166,73 +222,44 @@ export default function App() {
           {NAV.map(item => {
             const active = tab === item.id;
             return (
-              <button
-                key={item.id}
-                onClick={() => setTab(item.id)}
-                title={!hovered ? item.label : ""}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12,
-                  padding: "11px 14px",
-                  border: "none",
-                  background: active ? "rgba(255,255,255,0.2)" : "transparent",
-                  cursor: "pointer",
-                  color: active ? "#fff" : "rgba(255,255,255,0.75)",
-                  fontSize: 13,
-                  fontWeight: active ? 600 : 400,
-                  borderLeft: active ? "3px solid #fff" : "3px solid transparent",
-                  boxSizing: "border-box",
-                  width: "100%",
-                  textAlign: "left",
-                  transition: "background 0.15s",
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                }}
-              >
-                {/* Icon – immer sichtbar */}
-                <span style={{ fontSize: 17, flexShrink: 0 }}>{item.icon}</span>
-
-                {/* Label – erscheint bei Hover */}
-                <span style={{ opacity: hovered ? 1 : 0, transition: "opacity 0.2s ease", overflow: "hidden", flex: 1 }}>
-                  {item.label}
-                </span>
-
-                {/* Badge */}
-                {item.label === "Kalender" && pflichtCount > 0 && (
-                  <span style={{
-                    background: "#E24B4A", color: "#fff", borderRadius: 10,
-                    fontSize: 10, padding: "1px 6px", fontWeight: 700, flexShrink: 0,
-                    opacity: hovered ? 1 : 0,
-                    transition: "opacity 0.2s ease",
-                  }}>{pflichtCount}</span>
-                )}
+              <div key={item.id} style={{ position: "relative" }} title={!hovered ? item.label : ""}>
+                <button
+                  onClick={() => setTab(item.id)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 12,
+                    padding: "11px 14px",
+                    border: "none",
+                    background: active ? "rgba(255,255,255,0.2)" : "transparent",
+                    cursor: "pointer",
+                    color: active ? "#fff" : "rgba(255,255,255,0.75)",
+                    fontSize: 13, fontWeight: active ? 600 : 400,
+                    borderLeft: active ? "3px solid #fff" : "3px solid transparent",
+                    boxSizing: "border-box", width: "100%",
+                    whiteSpace: "nowrap", overflow: "hidden",
+                  }}
+                >
+                  <span style={{ fontSize: 17, flexShrink: 0 }}>{item.icon}</span>
+                  <span style={{ opacity: hovered ? 1 : 0, transition: "opacity 0.2s ease", flex: 1 }}>{item.label}</span>
+                  {item.label === "Kalender" && pflichtCount > 0 && hovered && (
+                    <span style={{ background: "#E24B4A", color: "#fff", borderRadius: 10, fontSize: 10, padding: "1px 6px", fontWeight: 700 }}>{pflichtCount}</span>
+                  )}
+                </button>
                 {/* Badge als Punkt wenn eingeklappt */}
                 {item.label === "Kalender" && pflichtCount > 0 && !hovered && (
-                  <span style={{ position: "absolute", top: 8, right: 8, width: 8, height: 8, borderRadius: "50%", background: "#E24B4A" }} />
+                  <span style={{ position: "absolute", top: 8, right: 10, width: 7, height: 7, borderRadius: "50%", background: "#E24B4A", pointerEvents: "none" }} />
                 )}
-              </button>
+              </div>
             );
           })}
         </div>
 
-        {/* Admin Button */}
+        {/* Admin */}
         <div style={{ padding: "12px" }}>
-          <button
-            onClick={() => setShowPin(true)}
-            title={!hovered ? (authed ? "Admin aktiv" : "Admin-Login") : ""}
-            style={{
-              width: "100%", padding: "7px 10px", borderRadius: 8,
-              background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)",
-              color: "#fff", cursor: "pointer", fontSize: 11,
-              display: "flex", alignItems: "center", gap: 10,
-              overflow: "hidden", whiteSpace: "nowrap",
-            }}
+          <button onClick={() => setShowPin(true)} title={!hovered ? (authed ? "Admin aktiv" : "Admin-Login") : ""}
+            style={{ width: "100%", padding: "7px 10px", borderRadius: 8, background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", cursor: "pointer", fontSize: 11, display: "flex", alignItems: "center", gap: 10, overflow: "hidden", whiteSpace: "nowrap" }}
           >
             <span style={{ flexShrink: 0 }}>🔑</span>
-            <span style={{ opacity: hovered ? 1 : 0, transition: "opacity 0.2s ease" }}>
-              {authed ? "Admin aktiv" : "Admin-Login"}
-            </span>
+            <span style={{ opacity: hovered ? 1 : 0, transition: "opacity 0.2s ease" }}>{authed ? "Admin aktiv" : "Admin-Login"}</span>
           </button>
         </div>
       </div>
@@ -246,7 +273,7 @@ export default function App() {
           <div style={{ fontSize: 11, color: "#bbb", marginTop: 1 }}>{new Date().toLocaleDateString("de-DE", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</div>
         </div>
 
-        {/* Content */}
+        {/* Content – kein Overflow */}
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden", padding: 14 }}>
           {ActiveModule && <ActiveModule {...moduleProps} />}
         </div>
@@ -255,6 +282,7 @@ export default function App() {
       {/* ── OVERLAYS ──────────────────────────────────────────────────────────── */}
       {showPin && <PinModal onSuccess={() => { setAuthed(true); setShowPin(false); }} onCancel={() => setShowPin(false)} />}
       {modal && <EditModal modalType={modal.type} modalMode={modal.mode} initialForm={modal.initialForm} onSave={saveItem} onClose={closeModal} />}
+
       {detailMA && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }} onClick={e => { if (e.target === e.currentTarget) setDetailMA(null); }}>
           <div style={{ ...C.card, width: "min(500px,95vw)", maxHeight: "90vh", overflowY: "auto" }}>
@@ -280,4 +308,3 @@ export default function App() {
     </div>
   );
 }
-

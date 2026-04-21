@@ -3,7 +3,7 @@ import { C, ACCENT } from "../lib/constants";
 import { getProgress } from "../lib/utils";
 import { Kalender } from "../components/Kalender";
 
-export function Dashboard({ data, setTab, saveTermin, deleteTermin }: any) {
+export function Dashboard({ data, setTab, saveTermin, deleteTermin, setSelectedBS }: any) {
   const [aiRes, setAiRes]   = useState("");
   const [aiLoad, setAiLoad] = useState(false);
   const [frage, setFrage]   = useState("");
@@ -20,7 +20,6 @@ export function Dashboard({ data, setTab, saveTermin, deleteTermin }: any) {
       return da - db;
     });
 
-  // Restliche Tage – null wenn kein Datum
   const getDL = (ende: string) => {
     if (!ende) return null;
     const dl = Math.ceil((new Date(ende).getTime() - Date.now()) / 86400000);
@@ -34,15 +33,8 @@ export function Dashboard({ data, setTab, saveTermin, deleteTermin }: any) {
       fahrzeuge: data.fahrzeuge,
       mitarbeiter: data.mitarbeiter.map((m: any) => ({ name: m.name, status: m.status, baustelle: m.baustelle })),
     });
-    fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 400, system: ctx, messages: [{ role: "user", content: p }] }),
-    })
-      .then(r => r.json())
-      .then(d => setAiRes((d.content && d.content[0] && d.content[0].text) || "Keine Antwort."))
-      .catch(e => setAiRes("Fehler: " + e.message))
-      .finally(() => setAiLoad(false));
+    fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 400, system: ctx, messages: [{ role: "user", content: p }] }) })
+      .then(r => r.json()).then(d => setAiRes((d.content && d.content[0] && d.content[0].text) || "Keine Antwort.")).catch(e => setAiRes("Fehler: " + e.message)).finally(() => setAiLoad(false));
   };
 
   return (
@@ -51,14 +43,13 @@ export function Dashboard({ data, setTab, saveTermin, deleteTermin }: any) {
       {/* ── LINKE SPALTE ─────────────────────────────────────────────────────── */}
       <div style={{ display: "flex", flexDirection: "column", gap: 12, height: "100%", overflow: "hidden" }}>
 
-        {/* Aktive Baustellen – scrollbar */}
+        {/* Aktive Baustellen – nur Liste scrollt */}
         <div style={{ ...C.card, display: "flex", flexDirection: "column", flex: "0 0 auto", maxHeight: "55%" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexShrink: 0 }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: "#222" }}>Aktive Baustellen</span>
             <button onClick={() => setTab(3)} style={{ fontSize: 11, color: ACCENT, background: "none", border: "none", cursor: "pointer", fontWeight: 500 }}>Alle anzeigen →</button>
           </div>
 
-          {/* Scrollbarer Bereich – nur hier scrollt */}
           <div style={{ overflowY: "auto", flex: 1, minHeight: 0 }}>
             {sorted.map((b: any, idx: number) => {
               const col = bsColors[idx % bsColors.length];
@@ -70,7 +61,10 @@ export function Dashboard({ data, setTab, saveTermin, deleteTermin }: any) {
               return (
                 <div
                   key={b.id}
-                  onClick={() => setTab(3)}  // ← Klick navigiert zu Baustellen
+                  onClick={() => {
+                    setSelectedBS(b.id); // ← setzt die ausgewählte Baustelle
+                    setTab(3);           // ← navigiert zu Baustellen-Tab
+                  }}
                   style={{
                     background: col + "28",
                     borderRadius: 8,
@@ -89,7 +83,6 @@ export function Dashboard({ data, setTab, saveTermin, deleteTermin }: any) {
                     (e.currentTarget as HTMLElement).style.boxShadow = "";
                   }}
                 >
-                  {/* Zeile 1: Name + Prozent + Tage */}
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
                     <div>
                       <span style={{ fontWeight: 600, fontSize: 12, color: "#222" }}>{b.name}</span>
@@ -97,29 +90,19 @@ export function Dashboard({ data, setTab, saveTermin, deleteTermin }: any) {
                     </div>
                     <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                       <span style={{ fontSize: 11, fontWeight: 700, color: ACCENT }}>{prog}%</span>
-                      {dl !== null && (
-                        <span style={{ fontSize: 9, color: dl <= 14 ? "#E24B4A" : "#bbb" }}>{dl}d</span>
-                      )}
+                      {dl !== null && <span style={{ fontSize: 9, color: dl <= 14 ? "#E24B4A" : "#bbb" }}>{dl}d</span>}
                     </div>
                   </div>
-
-                  {/* Fortschrittsbalken */}
                   <div style={{ height: 3, background: "rgba(0,0,0,0.08)", borderRadius: 2, marginBottom: 4 }}>
                     <div style={{ height: "100%", width: prog + "%", background: ACCENT, borderRadius: 2 }} />
                   </div>
-
-                  {/* Aufgaben-Tags */}
                   {auf.length > 0 ? (
                     <div style={{ display: "flex", gap: 3, flexWrap: "wrap", alignItems: "center" }}>
-                      {auf.slice(0, 3).map((a: any) => (
-                        <span key={a.id} style={{ fontSize: 9, padding: "1px 5px", borderRadius: 6, background: a.erledigt ? ACCENT + "22" : "#f0f0f0", color: a.erledigt ? ACCENT : "#aaa", textDecoration: a.erledigt ? "line-through" : "none" }}>{a.titel}</span>
-                      ))}
+                      {auf.slice(0, 3).map((a: any) => <span key={a.id} style={{ fontSize: 9, padding: "1px 5px", borderRadius: 6, background: a.erledigt ? ACCENT + "22" : "#f0f0f0", color: a.erledigt ? ACCENT : "#aaa", textDecoration: a.erledigt ? "line-through" : "none" }}>{a.titel}</span>)}
                       {auf.length > 3 && <span style={{ fontSize: 9, color: "#bbb" }}>+{auf.length - 3}</span>}
                       <span style={{ fontSize: 9, color: "#bbb", marginLeft: "auto" }}>{done}/{auf.length} ✓</span>
                     </div>
-                  ) : (
-                    <div style={{ fontSize: 9, color: "#ccc", fontStyle: "italic" }}>Keine Aufgaben</div>
-                  )}
+                  ) : <div style={{ fontSize: 9, color: "#ccc", fontStyle: "italic" }}>Keine Aufgaben</div>}
                 </div>
               );
             })}
@@ -140,7 +123,7 @@ export function Dashboard({ data, setTab, saveTermin, deleteTermin }: any) {
                 const p = pins[idx] || { x: 160 + idx * 60, y: 120 };
                 const prog = getProgress(b);
                 return (
-                  <g key={b.id}>
+                  <g key={b.id} style={{ cursor: "pointer" }} onClick={() => { setSelectedBS(b.id); setTab(3); }}>
                     {b.status === "laufend" && <circle cx={p.x} cy={p.y} r={18} fill={ACCENT} opacity={0.12} />}
                     <circle cx={p.x} cy={p.y} r={10} fill="#fff" stroke={ACCENT} strokeWidth={2} />
                     <circle cx={p.x} cy={p.y} r={6} fill={ACCENT} />
@@ -153,13 +136,12 @@ export function Dashboard({ data, setTab, saveTermin, deleteTermin }: any) {
             </svg>
           </div>
         </div>
-
       </div>
 
-      {/* ── RECHTE SPALTE: alle fix ───────────────────────────────────────────── */}
+      {/* ── RECHTE SPALTE ────────────────────────────────────────────────────── */}
       <div style={{ display: "flex", flexDirection: "column", gap: 12, height: "100%", overflow: "hidden" }}>
 
-        {/* Kalender – fix */}
+        {/* Kalender */}
         <div style={{ ...C.card, flexShrink: 0 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: "#222" }}>Kalender</span>
@@ -168,7 +150,7 @@ export function Dashboard({ data, setTab, saveTermin, deleteTermin }: any) {
           <Kalender termine={data.termine || []} onSave={saveTermin} onDelete={deleteTermin} compact={true} baustellen={data.baustellen} />
         </div>
 
-        {/* Heute – fix */}
+        {/* Heute */}
         {heuteTermine.length > 0 && (
           <div style={{ ...C.card, flexShrink: 0 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: "#222", marginBottom: 6 }}>📅 Heute</div>
@@ -184,33 +166,22 @@ export function Dashboard({ data, setTab, saveTermin, deleteTermin }: any) {
           </div>
         )}
 
-        {/* KI Hilfe – fix */}
+        {/* KI Hilfe */}
         <div style={{ ...C.card, flexShrink: 0 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: "#222", marginBottom: 7 }}>✦ KI Hilfe</div>
           <div style={{ display: "flex", gap: 4, marginBottom: 6, flexWrap: "wrap" }}>
-            {[
-              ["Auslastung", "Kurze Zusammenfassung der aktuellen Auslastung."],
-              ["Engpässe", "Kritische Engpaesse?"],
-              ["Heute", "Was sollte ich heute zuerst tun?"],
-            ].map(q => (
+            {[["Auslastung", "Kurze Zusammenfassung der aktuellen Auslastung."], ["Engpässe", "Kritische Engpaesse?"], ["Heute", "Was sollte ich heute zuerst tun?"]].map(q => (
               <button key={q[0]} onClick={() => ask(q[1])} style={{ padding: "3px 8px", borderRadius: 12, background: "#f0faf9", border: "1px solid " + ACCENT + "44", color: ACCENT, cursor: "pointer", fontSize: 10, fontWeight: 500 }}>{q[0]}</button>
             ))}
           </div>
           <div style={{ display: "flex", gap: 5, marginBottom: 6 }}>
-            <input
-              style={{ ...C.inp, marginBottom: 0, flex: 1, fontSize: 11, padding: "5px 8px" }}
-              value={frage}
-              onChange={e => setFrage(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter" && frage) ask(frage); }}
-              placeholder="Frage stellen..."
-            />
+            <input style={{ ...C.inp, marginBottom: 0, flex: 1, fontSize: 11, padding: "5px 8px" }} value={frage} onChange={e => setFrage(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && frage) ask(frage); }} placeholder="Frage stellen..." />
             <button onClick={() => { if (frage) ask(frage); }} style={{ padding: "5px 10px", borderRadius: 8, border: "none", background: ACCENT, cursor: "pointer", fontSize: 12, color: "#fff", fontWeight: 600, flexShrink: 0 }}>→</button>
           </div>
           <div style={{ background: "#f8fffe", borderRadius: 8, padding: "7px 10px", minHeight: 40, fontSize: 11, lineHeight: 1.5, color: aiLoad ? "#bbb" : "#444", whiteSpace: "pre-wrap", border: "1px solid #e8f5f3" }}>
             {aiLoad ? "KI analysiert..." : aiRes || "Stelle eine Frage."}
           </div>
         </div>
-
       </div>
     </div>
   );

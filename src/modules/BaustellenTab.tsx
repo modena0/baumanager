@@ -4,8 +4,8 @@ import { C, ACCENT, BS_KAT } from "../lib/constants";
 import { getProgress, pill } from "../lib/utils";
 import { AufgabenPanel } from "../components/Kalender";
 
-export function BaustellenTab({ data, setData, openAdd, openEdit, deleteItem }: any) {
-  const [expId, setExpId] = useState<number|null>(null);
+export function BaustellenTab({ data, setData, openAdd, openEdit, deleteItem, selectedBS, setSelectedBS }: any) {
+  const [expId, setExpId] = useState<number|null>(selectedBS || null);
 
  const assignMA = (bsId: number, maId: number) => {
   setData((d: any) => {
