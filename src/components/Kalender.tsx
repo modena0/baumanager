@@ -51,7 +51,6 @@ export function TerminForm({ onSave, onCancel, prefill = {} as any, baustellen =
 
 export function AufgabenPanel({ baustelle: b, setData }: any) {
   const [neu, setNeu] = useState("");
-
   const auf = b.aufgaben || [];
   const done = auf.filter((a: any) => a.erledigt).length;
   const prog = auf.length > 0 ? Math.round(done / auf.length * 100) : 0;
