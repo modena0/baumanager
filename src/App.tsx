@@ -3,16 +3,16 @@ import type { ComponentType } from "react";
 import { NAV, INIT, C, ACCENT } from "./lib/constants";
 import { autoKat } from "./lib/utils";
 import { supabase } from "./lib/supabase";
-import { EditModal }        from "./components/EditModal";
-import { PinModal }         from "./components/PinModal";
-import { Dashboard }        from "./modules/Dashboard";
-import { MitarbeiterTab }   from "./modules/MitarbeiterTab";
-import { BaustellenTab }    from "./modules/BaustellenTab";
-import { KalenderTab }      from "./modules/KalenderTab";
-import { ZuordnungsBoard }  from "./modules/ZuordnungsBoard";
-import { FuhrparkTab }      from "./modules/FuhrparkTab";
-import { LagerTab }         from "./modules/LagerTab";
-import { KITab }            from "./modules/KITab";
+import { EditModal }       from "./components/EditModal";
+import { PinModal }        from "./components/PinModal";
+import { Dashboard }       from "./modules/Dashboard";
+import { MitarbeiterTab }  from "./modules/MitarbeiterTab";
+import { BaustellenTab }   from "./modules/BaustellenTab";
+import { KalenderTab }     from "./modules/KalenderTab";
+import { ZuordnungsBoard } from "./modules/ZuordnungsBoard";
+import { FuhrparkTab }     from "./modules/FuhrparkTab";
+import { LagerTab }        from "./modules/LagerTab";
+import { KITab }           from "./modules/KITab";
 
 const MODULE_MAP: Record<number, ComponentType<any>> = {
   0: Dashboard,
@@ -25,7 +25,7 @@ const MODULE_MAP: Record<number, ComponentType<any>> = {
   7: KITab,
 };
 
-// ── Hilfsfunktionen außerhalb der Komponente ──────────────────────────────────
+// ── Hilfsfunktionen ────────────────────────────────────────────────────────────
 const fixArr = (val: any): any[] => {
   if (!val) return [];
   if (Array.isArray(val)) return val;
@@ -42,14 +42,15 @@ const fixBS = (b: any) => ({
 });
 
 export default function App() {
-  const [tab,       setTab]       = useState(0);
-  const [data,      setData]      = useState(INIT);
-  const [modal,     setModal]     = useState<any>(null);
-  const [detailMA,  setDetailMA]  = useState<any>(null);
-  const [gpsStatus, setGpsStatus] = useState("Bereit");
-  const [showPin,   setShowPin]   = useState(false);
-  const [authed,    setAuthed]    = useState(false);
+  const [tab,         setTab]         = useState(0);
+  const [data,        setData]        = useState(INIT);
+  const [modal,       setModal]       = useState<any>(null);
+  const [detailMA,    setDetailMA]    = useState<any>(null);
+  const [gpsStatus,   setGpsStatus]   = useState("Bereit");
+  const [showPin,     setShowPin]     = useState(false);
+  const [authed,      setAuthed]      = useState(false);
   const [appUnlocked, setAppUnlocked] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const APP_CODE = "bau2026";
 
   useEffect(() => {
@@ -75,14 +76,13 @@ export default function App() {
   const today = new Date().toISOString().split("T")[0];
   const pflichtCount = (data.termine || []).filter((t: any) => t.art === "Pflichttermin" && t.datum >= today).length;
 
-  // ── Shared AI helper ──────────────────────────────────────────────────
   const callAI = (prompt: string, setter: (s: string) => void, loadSetter: (b: boolean) => void) => {
     loadSetter(true); setter("");
-    const ctx = "Bau-Logistik-Experte. Antworte auf Deutsch. Daten:" + JSON.stringify({ mitarbeiter:data.mitarbeiter, baustellen:data.baustellen, fahrzeuge:data.fahrzeuge, lager:data.lager, termine:data.termine });
+    const ctx = "Bau-Logistik-Experte. Antworte auf Deutsch. Daten:" + JSON.stringify({ mitarbeiter: data.mitarbeiter, baustellen: data.baustellen, fahrzeuge: data.fahrzeuge, lager: data.lager, termine: data.termine });
     fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:800, system:ctx, messages:[{role:"user",content:prompt}] }),
+      body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 800, system: ctx, messages: [{ role: "user", content: prompt }] }),
     })
       .then(r => r.json())
       .then(d => setter((d.content && d.content[0] && d.content[0].text) || "Keine Antwort."))
@@ -90,7 +90,6 @@ export default function App() {
       .finally(() => loadSetter(false));
   };
 
-  // ── Termine ───────────────────────────────────────────────────────────
   const saveTermin = async (d: any) => {
     if (d.id) {
       await supabase.from("termine").update(d).eq("id", d.id);
@@ -100,15 +99,15 @@ export default function App() {
       if (neu) setData((st: any) => ({ ...st, termine: [...(st.termine || []), neu[0]] }));
     }
   };
+
   const deleteTermin = async (id: number) => {
     await supabase.from("termine").delete().eq("id", id);
     setData((d: any) => ({ ...d, termine: d.termine.filter((t: any) => t.id !== id) }));
   };
 
-  // ── Modal helpers ─────────────────────────────────────────────────────
   const openAdd = (type: string) => {
-    const init = type === "baustellen" ? { mitarbeiter:[], fahrzeuge:[], equipment:[], aufgaben:[] } : {};
-    setModal({ type, mode:"add", initialForm:init });
+    const init = type === "baustellen" ? { mitarbeiter: [], fahrzeuge: [], equipment: [], aufgaben: [] } : {};
+    setModal({ type, mode: "add", initialForm: init });
   };
 
   const openEdit = (type: string, item: any) => {
@@ -117,10 +116,10 @@ export default function App() {
       f.qualifikationen = (item.qualifikationen || []).join(", ");
       f.fuehrerschein   = (item.fuehrerschein   || []).join(", ");
       f.gutMit   = (item.gutMit  || []).map((id: number) => { const m = data.mitarbeiter.find((x: any) => x.id === id); return m ? m.name : ""; }).join(", ");
-      f.nichtMit = (item.nichtMit|| []).map((id: number) => { const m = data.mitarbeiter.find((x: any) => x.id === id); return m ? m.name : ""; }).join(", ");
+      f.nichtMit = (item.nichtMit || []).map((id: number) => { const m = data.mitarbeiter.find((x: any) => x.id === id); return m ? m.name : ""; }).join(", ");
     }
     if (type === "baustellen") f.anforderungen = (item.anforderungen || []).join(", ");
-    setModal({ type, mode:"edit", initialForm:f });
+    setModal({ type, mode: "edit", initialForm: f });
   };
 
   const closeModal = () => setModal(null);
@@ -140,7 +139,7 @@ export default function App() {
       p.fuehrerschein   = f.fuehrerschein   ? f.fuehrerschein.split(",").map((s: string) => s.trim()).filter(Boolean) : [];
       p.stundenlohn     = parseFloat(f.stundenlohn) || 0;
       p.urlaubstage     = parseInt(f.urlaubstage)   || 0;
-      p.urlaubGenommen  = parseInt(f.urlaubGenommen)|| 0;
+      p.urlaubGenommen  = parseInt(f.urlaubGenommen) || 0;
       p.gutMit   = pn(f.gutMit);
       p.nichtMit = pn(f.nichtMit);
     }
@@ -181,14 +180,13 @@ export default function App() {
   const simulateGPS = () => {
     setGpsStatus("Aktualisiere...");
     setTimeout(() => {
-      setData((d: any) => ({ ...d, fahrzeuge: d.fahrzeuge.map((f: any) => ({ ...f, lat: f.lat+(Math.random()-0.5)*0.008, lng: f.lng+(Math.random()-0.5)*0.008 })) }));
+      setData((d: any) => ({ ...d, fahrzeuge: d.fahrzeuge.map((f: any) => ({ ...f, lat: f.lat + (Math.random() - 0.5) * 0.008, lng: f.lng + (Math.random() - 0.5) * 0.008 })) }));
       setGpsStatus("Aktualisiert " + new Date().toLocaleTimeString("de-DE"));
     }, 800);
   };
 
-  // ── Render ────────────────────────────────────────────────────────────
   const ActiveModule = MODULE_MAP[tab];
-  const navLabel = (NAV.find(n => n.id === tab) || { label:"Dashboard" }).label;
+  const navLabel = (NAV.find(n => n.id === tab) || { label: "Dashboard" }).label;
 
   const moduleProps = {
     data, setData, setTab,
@@ -200,21 +198,22 @@ export default function App() {
     onDetail: setDetailMA,
   };
 
+  // ── Login ─────────────────────────────────────────────────────────────────────
   if (!appUnlocked) {
     return (
-      <div style={{ fontFamily:"system-ui,sans-serif", minHeight:"100vh", background:"#f0f4f3", display:"flex", alignItems:"center", justifyContent:"center" }}>
-        <div style={{ ...C.card, width:"min(360px,95vw)", textAlign:"center" }}>
-          <div style={{ width:52, height:52, borderRadius:12, background:ACCENT, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, fontWeight:700, color:"#fff", margin:"0 auto 16px" }}>BM</div>
-          <div style={{ fontSize:18, fontWeight:700, color:"#222", marginBottom:4 }}>BauManager</div>
-          <div style={{ fontSize:12, color:"#aaa", marginBottom:24 }}>Bitte Zugangscode eingeben</div>
+      <div style={{ fontFamily: "system-ui,sans-serif", minHeight: "100vh", background: "#f0f4f3", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ ...C.card, width: "min(360px,95vw)", textAlign: "center" }}>
+          <div style={{ width: 52, height: 52, borderRadius: 12, background: ACCENT, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 700, color: "#fff", margin: "0 auto 16px" }}>BM</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: "#222", marginBottom: 4 }}>BauManager</div>
+          <div style={{ fontSize: 12, color: "#aaa", marginBottom: 24 }}>Bitte Zugangscode eingeben</div>
           <input
             id="code-input"
             type="password"
             placeholder="Zugangscode"
-            style={{ ...C.inp, textAlign:"center", fontSize:16, letterSpacing:4, marginBottom:12 }}
-            onKeyDown={e => { if (e.key === "Enter") { const v = (document.getElementById("code-input") as HTMLInputElement).value; if (v === APP_CODE) setAppUnlocked(true); }}}
+            style={{ ...C.inp, textAlign: "center", fontSize: 16, letterSpacing: 4, marginBottom: 12 }}
+            onKeyDown={e => { if (e.key === "Enter") { const v = (document.getElementById("code-input") as HTMLInputElement).value; if (v === APP_CODE) setAppUnlocked(true); } }}
           />
-          <button style={{ ...C.btnP, width:"100%" }} onClick={() => { const v = (document.getElementById("code-input") as HTMLInputElement).value; if (v === APP_CODE) setAppUnlocked(true); }}>
+          <button style={{ ...C.btnP, width: "100%" }} onClick={() => { const v = (document.getElementById("code-input") as HTMLInputElement).value; if (v === APP_CODE) setAppUnlocked(true); }}>
             Einloggen
           </button>
         </div>
@@ -222,70 +221,123 @@ export default function App() {
     );
   }
 
-  return (
-    <div style={{ fontFamily:"system-ui,sans-serif", minHeight:"100vh", background:"#f0f4f3", display:"flex" }}>
+  const SW = sidebarOpen ? 200 : 60;
 
-      {/* ── Sidebar ─────────────────────────────────────────────────── */}
-      <div style={{ width:200, background:ACCENT, minHeight:"100vh", display:"flex", flexDirection:"column", padding:"20px 0", flexShrink:0 }}>
-        <div style={{ padding:"0 16px 24px" }}>
-          <div style={{ background:"#fff", borderRadius:14, padding:"12px 14px", display:"flex", alignItems:"center", gap:10 }}>
-            <div style={{ width:36, height:36, borderRadius:8, background:ACCENT, display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:700, color:"#fff" }}>BM</div>
-            <div><div style={{ fontSize:11, fontWeight:700, color:"#333", lineHeight:1.2 }}>BauManager</div><div style={{ fontSize:9, color:"#aaa" }}>Pro</div></div>
-          </div>
+  // ── Haupt-App ─────────────────────────────────────────────────────────────────
+  return (
+    <div style={{ fontFamily: "system-ui,sans-serif", height: "100vh", overflow: "hidden", background: "#f0f4f3", display: "flex" }}>
+
+      {/* ── Sidebar ───────────────────────────────────────────────────────────── */}
+      <div style={{
+        width: SW,
+        minWidth: SW,
+        background: ACCENT,
+        height: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        padding: "16px 0",
+        flexShrink: 0,
+        transition: "width 0.25s ease, min-width 0.25s ease",
+        overflow: "hidden",
+      }}>
+        {/* Logo + Toggle Button */}
+        <div style={{ padding: "0 10px 20px", display: "flex", alignItems: "center", justifyContent: sidebarOpen ? "space-between" : "center" }}>
+          {sidebarOpen && (
+            <div style={{ background: "#fff", borderRadius: 10, padding: "8px 10px", display: "flex", alignItems: "center", gap: 8, flex: 1, marginRight: 8 }}>
+              <div style={{ width: 28, height: 28, borderRadius: 6, background: ACCENT, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#fff", flexShrink: 0 }}>BM</div>
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#333" }}>BauManager</div>
+                <div style={{ fontSize: 8, color: "#aaa" }}>Pro</div>
+              </div>
+            </div>
+          )}
+          <button
+            onClick={() => setSidebarOpen(o => !o)}
+            title={sidebarOpen ? "Einklappen" : "Ausklappen"}
+            style={{ background: "rgba(255,255,255,0.15)", border: "none", borderRadius: 8, width: 30, height: 30, cursor: "pointer", color: "#fff", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+          >
+            {sidebarOpen ? "◀" : "▶"}
+          </button>
         </div>
 
-        {NAV.map(item => {
-          const active = tab === item.id;
-          return (
-            <button key={item.id} onClick={() => setTab(item.id)} style={{ display:"flex", alignItems:"center", gap:10, padding:"11px 16px", border:"none", background:active?"rgba(255,255,255,0.2)":"transparent", cursor:"pointer", textAlign:"left", color:active?"#fff":"rgba(255,255,255,0.75)", fontSize:13, fontWeight:active?600:400, borderLeft:active?"3px solid #fff":"3px solid transparent", boxSizing:"border-box", width:"100%" }}>
-              <span style={{ fontSize:15 }}>{item.icon}</span>
-              <span>{item.label}</span>
-              {item.label === "Kalender" && pflichtCount > 0 && <span style={{ marginLeft:"auto", background:"#E24B4A", color:"#fff", borderRadius:10, fontSize:10, padding:"1px 6px", fontWeight:700 }}>{pflichtCount}</span>}
-            </button>
-          );
-        })}
+        {/* Nav */}
+        <div style={{ flex: 1, overflowY: "auto" }}>
+          {NAV.map(item => {
+            const active = tab === item.id;
+            return (
+              <div key={item.id} style={{ position: "relative" }} title={!sidebarOpen ? item.label : ""}>
+                <button onClick={() => setTab(item.id)} style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  padding: sidebarOpen ? "11px 16px" : "11px 0",
+                  justifyContent: sidebarOpen ? "flex-start" : "center",
+                  border: "none",
+                  background: active ? "rgba(255,255,255,0.2)" : "transparent",
+                  cursor: "pointer",
+                  color: active ? "#fff" : "rgba(255,255,255,0.75)",
+                  fontSize: 13, fontWeight: active ? 600 : 400,
+                  borderLeft: active ? "3px solid #fff" : "3px solid transparent",
+                  boxSizing: "border-box", width: "100%",
+                  transition: "background 0.15s",
+                }}>
+                  <span style={{ fontSize: 16, flexShrink: 0 }}>{item.icon}</span>
+                  {sidebarOpen && <span style={{ whiteSpace: "nowrap" }}>{item.label}</span>}
+                  {sidebarOpen && item.label === "Kalender" && pflichtCount > 0 && (
+                    <span style={{ marginLeft: "auto", background: "#E24B4A", color: "#fff", borderRadius: 10, fontSize: 10, padding: "1px 6px", fontWeight: 700 }}>{pflichtCount}</span>
+                  )}
+                  {!sidebarOpen && item.label === "Kalender" && pflichtCount > 0 && (
+                    <span style={{ position: "absolute", top: 6, right: 6, background: "#E24B4A", color: "#fff", borderRadius: "50%", fontSize: 9, width: 16, height: 16, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{pflichtCount}</span>
+                  )}
+                </button>
+              </div>
+            );
+          })}
+        </div>
 
-        <div style={{ marginTop:"auto", padding:"16px" }}>
-          <button onClick={() => setShowPin(true)} style={{ width:"100%", padding:"7px", borderRadius:8, background:"rgba(255,255,255,0.15)", border:"1px solid rgba(255,255,255,0.3)", color:"#fff", cursor:"pointer", fontSize:11 }}>
-            {authed ? "Admin aktiv" : "Admin-Login"}
+        {/* Admin */}
+        <div style={{ padding: "12px 8px 0" }}>
+          <button onClick={() => setShowPin(true)} style={{ width: "100%", padding: "7px", borderRadius: 8, background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", cursor: "pointer", fontSize: 11 }}>
+            {sidebarOpen ? (authed ? "Admin aktiv" : "Admin-Login") : "🔑"}
           </button>
         </div>
       </div>
 
-      {/* ── Main ────────────────────────────────────────────────────── */}
-      <div style={{ flex:1, minWidth:0, padding:24, overflowY:"auto" }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
-          <div>
-            <div style={{ fontSize:20, fontWeight:700, color:"#222" }}>{navLabel}</div>
-            <div style={{ fontSize:12, color:"#bbb", marginTop:2 }}>{new Date().toLocaleDateString("de-DE",{weekday:"long",year:"numeric",month:"long",day:"numeric"})}</div>
-          </div>
+      {/* ── Main ─────────────────────────────────────────────────────────────── */}
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
+
+        {/* Header */}
+        <div style={{ padding: "16px 24px 12px", flexShrink: 0, borderBottom: "1px solid #e8eaed", background: "#f0f4f3" }}>
+          <div style={{ fontSize: 18, fontWeight: 700, color: "#222" }}>{navLabel}</div>
+          <div style={{ fontSize: 11, color: "#bbb", marginTop: 2 }}>{new Date().toLocaleDateString("de-DE", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</div>
         </div>
-        {ActiveModule && <ActiveModule {...moduleProps} />}
+
+        {/* Scrollbarer Inhalt */}
+        <div style={{ flex: 1, overflowY: "auto", padding: 20, scrollbarWidth: "thin", scrollbarColor: "#d0d0d0 transparent" }}>
+          {ActiveModule && <ActiveModule {...moduleProps} />}
+        </div>
       </div>
 
-      {/* ── Overlays ────────────────────────────────────────────────── */}
+      {/* ── Overlays ──────────────────────────────────────────────────────────── */}
       {showPin && <PinModal onSuccess={() => { setAuthed(true); setShowPin(false); }} onCancel={() => setShowPin(false)} />}
-
       {modal && <EditModal modalType={modal.type} modalMode={modal.mode} initialForm={modal.initialForm} onSave={saveItem} onClose={closeModal} />}
 
       {detailMA && (
-        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.25)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:200 }} onClick={e => { if (e.target === e.currentTarget) setDetailMA(null); }}>
-          <div style={{ ...C.card, width:"min(500px,95vw)", maxHeight:"90vh", overflowY:"auto" }}>
-            <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:16, paddingBottom:14, borderBottom:"1px solid #f5f5f5" }}>
-              <div style={{ width:52, height:52, borderRadius:"50%", background:"#e8f5f3", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, fontWeight:700, color:ACCENT }}>{detailMA.name.split(" ").map((n: string)=>n[0]).join("")}</div>
-              <div><div style={{ fontWeight:700, fontSize:17, color:"#222" }}>{detailMA.name}</div><div style={{ fontSize:13, color:"#aaa" }}>{detailMA.rolle}</div></div>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }} onClick={e => { if (e.target === e.currentTarget) setDetailMA(null); }}>
+          <div style={{ ...C.card, width: "min(500px,95vw)", maxHeight: "90vh", overflowY: "auto" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16, paddingBottom: 14, borderBottom: "1px solid #f5f5f5" }}>
+              <div style={{ width: 52, height: 52, borderRadius: "50%", background: "#e8f5f3", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 700, color: ACCENT }}>{detailMA.name.split(" ").map((n: string) => n[0]).join("")}</div>
+              <div><div style={{ fontWeight: 700, fontSize: 17, color: "#222" }}>{detailMA.name}</div><div style={{ fontSize: 13, color: "#aaa" }}>{detailMA.rolle}</div></div>
             </div>
-            {[["Telefon",detailMA.telefon],["Adresse",detailMA.adresse],["Geburtsdatum",detailMA.geburtsdatum],["Notfallkontakt",detailMA.notfallkontakt],["Eintrittsdatum",detailMA.eintrittsdatum],["Vertragsart",detailMA.vertragsart],["Stundenlohn",detailMA.stundenlohn+" €/h"],["Urlaub",(detailMA.urlaubGenommen||0)+" / "+(detailMA.urlaubstage||0)+" Tage"],["Baustelle",detailMA.baustelle],["Kategorie",detailMA.kategorie||autoKat(detailMA)],["Zertifikate",detailMA.zertifikate],["Bemerkungen",detailMA.bemerkungen]].map(row => {
+            {[["Telefon", detailMA.telefon], ["Adresse", detailMA.adresse], ["Geburtsdatum", detailMA.geburtsdatum], ["Notfallkontakt", detailMA.notfallkontakt], ["Eintrittsdatum", detailMA.eintrittsdatum], ["Vertragsart", detailMA.vertragsart], ["Stundenlohn", detailMA.stundenlohn + " €/h"], ["Urlaub", (detailMA.urlaubGenommen || 0) + " / " + (detailMA.urlaubstage || 0) + " Tage"], ["Baustelle", detailMA.baustelle], ["Kategorie", detailMA.kategorie || autoKat(detailMA)], ["Zertifikate", detailMA.zertifikate], ["Bemerkungen", detailMA.bemerkungen]].map(row => {
               if (!row[1]) return null;
-              return <div key={row[0]} style={{ display:"flex", gap:12, padding:"7px 0", borderBottom:"1px solid #f5f5f5" }}><span style={{ fontSize:12, color:"#bbb", minWidth:110 }}>{row[0]}</span><span style={{ fontSize:13, color:"#333" }}>{row[1]}</span></div>;
+              return <div key={row[0]} style={{ display: "flex", gap: 12, padding: "7px 0", borderBottom: "1px solid #f5f5f5" }}><span style={{ fontSize: 12, color: "#bbb", minWidth: 110 }}>{row[0]}</span><span style={{ fontSize: 13, color: "#333" }}>{row[1]}</span></div>;
             })}
-            <div style={{ padding:"10px 0 4px" }}><div style={{ fontSize:12, color:"#bbb", marginBottom:6 }}>Qualifikationen</div>{(detailMA.qualifikationen||[]).map((q: string)=><span key={q} style={C.tag}>{q}</span>)}</div>
-            <div style={{ padding:"4px 0" }}><div style={{ fontSize:12, color:"#bbb", marginBottom:6 }}>Führerschein</div>{(detailMA.fuehrerschein||[]).map((f: string)=><span key={f} style={{ display:"inline-block", padding:"2px 8px", borderRadius:10, fontSize:11, background:"#e8f5f3", color:ACCENT, marginRight:4, marginBottom:2 }}>{f}</span>)}</div>
-            {(detailMA.gutMit||[]).length>0  && <div style={{ padding:"4px 0" }}><div style={{ fontSize:12, color:"#bbb", marginBottom:6 }}>Gut mit</div>{detailMA.gutMit.map((id: number)=>{const m=data.mitarbeiter.find((x: any)=>x.id===id);return m?<span key={id} style={{ display:"inline-block", padding:"2px 8px", borderRadius:10, fontSize:11, background:"#e8f5f3", color:ACCENT, marginRight:4, marginBottom:2 }}>{m.name}</span>:null;})}</div>}
-            {(detailMA.nichtMit||[]).length>0 && <div style={{ padding:"4px 0 12px" }}><div style={{ fontSize:12, color:"#bbb", marginBottom:6 }}>Nicht mit</div>{detailMA.nichtMit.map((id: number)=>{const m=data.mitarbeiter.find((x: any)=>x.id===id);return m?<span key={id} style={{ display:"inline-block", padding:"2px 8px", borderRadius:10, fontSize:11, background:"#fde8e8", color:"#E24B4A", marginRight:4, marginBottom:2 }}>{m.name}</span>:null;})}</div>}
-            <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop:12 }}>
+            <div style={{ padding: "10px 0 4px" }}><div style={{ fontSize: 12, color: "#bbb", marginBottom: 6 }}>Qualifikationen</div>{(detailMA.qualifikationen || []).map((q: string) => <span key={q} style={C.tag}>{q}</span>)}</div>
+            <div style={{ padding: "4px 0" }}><div style={{ fontSize: 12, color: "#bbb", marginBottom: 6 }}>Führerschein</div>{(detailMA.fuehrerschein || []).map((f: string) => <span key={f} style={{ display: "inline-block", padding: "2px 8px", borderRadius: 10, fontSize: 11, background: "#e8f5f3", color: ACCENT, marginRight: 4, marginBottom: 2 }}>{f}</span>)}</div>
+            {(detailMA.gutMit || []).length > 0 && <div style={{ padding: "4px 0" }}><div style={{ fontSize: 12, color: "#bbb", marginBottom: 6 }}>Gut mit</div>{detailMA.gutMit.map((id: number) => { const m = data.mitarbeiter.find((x: any) => x.id === id); return m ? <span key={id} style={{ display: "inline-block", padding: "2px 8px", borderRadius: 10, fontSize: 11, background: "#e8f5f3", color: ACCENT, marginRight: 4, marginBottom: 2 }}>{m.name}</span> : null; })}</div>}
+            {(detailMA.nichtMit || []).length > 0 && <div style={{ padding: "4px 0 12px" }}><div style={{ fontSize: 12, color: "#bbb", marginBottom: 6 }}>Nicht mit</div>{detailMA.nichtMit.map((id: number) => { const m = data.mitarbeiter.find((x: any) => x.id === id); return m ? <span key={id} style={{ display: "inline-block", padding: "2px 8px", borderRadius: 10, fontSize: 11, background: "#fde8e8", color: "#E24B4A", marginRight: 4, marginBottom: 2 }}>{m.name}</span> : null; })}</div>}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
               <button style={C.btnS} onClick={() => setDetailMA(null)}>Schließen</button>
-              <button style={C.btnP} onClick={() => { openEdit("mitarbeiter",detailMA); setDetailMA(null); }}>Bearbeiten</button>
+              <button style={C.btnP} onClick={() => { openEdit("mitarbeiter", detailMA); setDetailMA(null); }}>Bearbeiten</button>
             </div>
           </div>
         </div>
