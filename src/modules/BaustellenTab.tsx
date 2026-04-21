@@ -6,9 +6,9 @@ import { AufgabenPanel } from "../components/Kalender";
 
 export function BaustellenTab({ data, setData, openAdd, openEdit, deleteItem, selectedBS, setSelectedBS }: any) {
 
-  // Wenn selectedBS gesetzt → direkt aufgeklappte Baustelle
   const [expId, setExpId] = useState<number|null>(selectedBS || null);
 
+  // ── Mitarbeiter zuweisen ────────────────────────────────────────────────────
   const assignMA = (bsId: number, maId: number) => {
     setData((d: any) => {
       const nb = d.baustellen.map((b: any) => {
@@ -21,10 +21,17 @@ export function BaustellenTab({ data, setData, openAdd, openEdit, deleteItem, se
       });
       const nm = nb.find((b: any) => b.id === bsId).name;
       const was = d.baustellen.find((b: any) => b.id === bsId).mitarbeiter.includes(maId);
-      return { ...d, baustellen: nb, mitarbeiter: d.mitarbeiter.map((m: any) => m.id !== maId ? m : { ...m, baustelle: was ? "-" : nm }) };
+      return {
+        ...d,
+        baustellen: nb,
+        mitarbeiter: d.mitarbeiter.map((m: any) =>
+          m.id !== maId ? m : { ...m, baustelle: was ? "-" : nm }
+        ),
+      };
     });
   };
 
+  // ── Fahrzeug zuweisen ───────────────────────────────────────────────────────
   const assignFZ = (bsId: number, fzId: number) => {
     setData((d: any) => {
       const nb = d.baustellen.map((b: any) => {
@@ -36,24 +43,46 @@ export function BaustellenTab({ data, setData, openAdd, openEdit, deleteItem, se
       });
       const nm = nb.find((b: any) => b.id === bsId).name;
       const was = (d.baustellen.find((b: any) => b.id === bsId).fahrzeuge || []).includes(fzId);
-      return { ...d, baustellen: nb, fahrzeuge: d.fahrzeuge.map((f: any) => f.id !== fzId ? f : { ...f, baustelle: was ? "-" : nm, status: was ? "verfügbar" : "im Einsatz" }) };
+      return {
+        ...d,
+        baustellen: nb,
+        fahrzeuge: d.fahrzeuge.map((f: any) =>
+          f.id !== fzId ? f : { ...f, baustelle: was ? "-" : nm, status: was ? "verfügbar" : "im Einsatz" }
+        ),
+      };
     });
   };
 
+  // ── Equipment zuweisen + Lagerbestand aktualisieren ────────────────────────
   const assignEQ = (bsId: number, lgId: number) => {
     setData((d: any) => {
+      // Prüfen ob Equipment bereits zugewiesen ist
+      const was = (d.baustellen.find((b: any) => b.id === bsId)?.equipment || []).includes(lgId);
+
+      // Baustellen-Equipment aktualisieren
       const nb = d.baustellen.map((b: any) => {
         if (b.id !== bsId) return b;
         const eq = b.equipment || [];
-        const up = eq.includes(lgId) ? eq.filter((i: number) => i !== lgId) : [...eq, lgId];
+        const up = was ? eq.filter((i: number) => i !== lgId) : [...eq, lgId];
         supabase.from("baustellen").update({ equipment: up }).eq("id", bsId);
         return { ...b, equipment: up };
       });
-      return { ...d, baustellen: nb };
+
+      // Lagerbestand aktualisieren
+      const nl = d.lager.map((l: any) => {
+        if (l.id !== lgId) return l;
+        const neuVerfuegbar = was
+          ? Math.min(l.anzahl, (l.verfuegbar || 0) + 1)  // freigeben → +1
+          : Math.max(0, (l.verfuegbar || 0) - 1);         // belegen   → -1
+        supabase.from("lager").update({ verfuegbar: neuVerfuegbar }).eq("id", lgId);
+        return { ...l, verfuegbar: neuVerfuegbar };
+      });
+
+      return { ...d, baustellen: nb, lager: nl };
     });
   };
 
-  // Wenn selectedBS gesetzt → nur diese eine Baustelle zeigen
+  // ── Baustellen filtern (Einzelansicht wenn selectedBS gesetzt) ──────────────
   const anzeigeBS = selectedBS
     ? data.baustellen.filter((b: any) => b.id === selectedBS)
     : data.baustellen;
@@ -64,15 +93,14 @@ export function BaustellenTab({ data, setData, openAdd, openEdit, deleteItem, se
       k === "Sonstiges"
         ? !["Tiefbau", "LSA", "Straße"].includes(b.kategorie) || !b.kategorie
         : b.kategorie === k
-    )
+    ),
   })).filter(g => g.members.length > 0);
 
   return (
     <div>
-      {/* Header mit Buttons */}
+      {/* ── Header ──────────────────────────────────────────────────────────── */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {/* Zurück-Button wenn Einzelansicht */}
+        <div>
           {selectedBS && (
             <button
               onClick={() => { setSelectedBS(null); setExpId(null); }}
@@ -85,7 +113,7 @@ export function BaustellenTab({ data, setData, openAdd, openEdit, deleteItem, se
         <button style={C.btnP} onClick={() => openAdd("baustellen")}>+ Neue Baustelle</button>
       </div>
 
-      {/* Baustellen Gruppen */}
+      {/* ── Baustellen Gruppen ───────────────────────────────────────────────── */}
       {bsGruppen.map(g => (
         <div key={g.key} style={{ ...C.card, marginBottom: 16 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
@@ -101,7 +129,10 @@ export function BaustellenTab({ data, setData, openAdd, openEdit, deleteItem, se
             const aEQ = (b.equipment || []).map((id: number) => data.lager.find((l: any) => l.id === id)).filter(Boolean);
             const avMA = data.mitarbeiter.filter((m: any) => !b.mitarbeiter.includes(m.id));
             const avFZ = data.fahrzeuge.filter((f: any) => !(b.fahrzeuge || []).includes(f.id));
-            const avEQ = data.lager.filter((l: any) => !(b.equipment || []).includes(l.id));
+            // Nur Equipment anzeigen das noch verfügbar ist (verfuegbar > 0) oder bereits zugewiesen
+            const avEQ = data.lager.filter((l: any) =>
+              !(b.equipment || []).includes(l.id) && (l.verfuegbar || 0) > 0
+            );
             const dl = b.ende ? Math.ceil((new Date(b.ende).getTime() - Date.now()) / 86400000) : null;
 
             return (
@@ -121,7 +152,9 @@ export function BaustellenTab({ data, setData, openAdd, openEdit, deleteItem, se
                       </div>
                       <span style={{ fontSize: 12, fontWeight: 700, color: ACCENT, minWidth: 32 }}>{prog}%</span>
                       <span style={pill(b.status, true)}>{b.status}</span>
-                      {dl !== null && <span style={{ fontSize: 11, color: dl <= 14 ? "#E24B4A" : "#bbb" }}>{dl}d</span>}
+                      {dl !== null && !isNaN(dl) && (
+                        <span style={{ fontSize: 11, color: dl <= 14 ? "#E24B4A" : "#bbb" }}>{dl}d</span>
+                      )}
                       <span style={{ fontSize: 11, color: "#bbb" }}>{aMA.length}MA {aFZ.length}Fzg</span>
                     </div>
                   </div>
@@ -153,7 +186,7 @@ export function BaustellenTab({ data, setData, openAdd, openEdit, deleteItem, se
                       {[
                         { title: "Mitarbeiter", aList: aMA, avList: avMA, fn: (id: number) => assignMA(b.id, id), getName: (x: any) => x.name, getSub: (x: any) => x.rolle, ac: "#1D9E75" },
                         { title: "Fahrzeuge",   aList: aFZ, avList: avFZ, fn: (id: number) => assignFZ(b.id, id), getName: (x: any) => x.name, getSub: (x: any) => x.kennzeichen, ac: "#378ADD" },
-                        { title: "Equipment",   aList: aEQ, avList: avEQ, fn: (id: number) => assignEQ(b.id, id), getName: (x: any) => x.name, getSub: (x: any) => x.kategorie, ac: "#BA7517" },
+                        { title: "Equipment",   aList: aEQ, avList: avEQ, fn: (id: number) => assignEQ(b.id, id), getName: (x: any) => x.name, getSub: (x: any) => `${x.verfuegbar}/${x.anzahl} verfügbar`, ac: "#BA7517" },
                       ].map(col => (
                         <div key={col.title}>
                           <div style={{ fontSize: 12, fontWeight: 600, color: "#555", marginBottom: 8 }}>{col.title}</div>
@@ -171,13 +204,14 @@ export function BaustellenTab({ data, setData, openAdd, openEdit, deleteItem, se
                           {col.aList.length === 0 && <div style={{ fontSize: 11, color: "#bbb", marginBottom: 6 }}>Keine</div>}
 
                           {/* Verfügbare */}
-                          <div style={{ maxHeight: 120, overflowY: "auto", display: "flex", flexDirection: "column", gap: 3 }}>
+                          <div style={{ maxHeight: 140, overflowY: "auto", display: "flex", flexDirection: "column", gap: 3 }}>
                             {col.avList.map((x: any) => (
                               <div key={x.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 8px", background: "#fff", borderRadius: 8, border: "1px solid #eee" }}>
                                 <div style={{ fontSize: 11 }}>{col.getName(x)}</div>
                                 <button onClick={() => col.fn(x.id)} style={{ background: col.ac + "22", border: "none", color: col.ac, borderRadius: 6, padding: "2px 7px", cursor: "pointer", fontSize: 11 }}>+</button>
                               </div>
                             ))}
+                            {col.avList.length === 0 && <div style={{ fontSize: 10, color: "#ccc", fontStyle: "italic" }}>Nichts verfügbar</div>}
                           </div>
                         </div>
                       ))}
