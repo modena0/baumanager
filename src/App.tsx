@@ -5,7 +5,7 @@ import { autoKat } from "./lib/utils";
 import { supabase } from "./lib/supabase";
 import { EditModal }       from "./components/EditModal";
 import { PinModal }        from "./components/PinModal";
-import { LoginScreen }     from "./LoginScreen";
+import { LoginScreen }     from "./loginscreen";
 import { Dashboard }       from "./modules/Dashboard";
 import { MitarbeiterTab }  from "./modules/MitarbeiterTab";
 import { BaustellenTab }   from "./modules/BaustellenTab";
@@ -118,7 +118,7 @@ export default function App() {
   const deleteItem = async (type: string, id: number) => { await supabase.from(type).delete().eq("id", id); setData((d: any) => { const n = { ...d }; n[type] = d[type].filter((x: any) => x.id !== id); return n; }); };
   const simulateGPS = () => { setGpsStatus("Aktualisiere..."); setTimeout(() => { setData((d: any) => ({ ...d, fahrzeuge: d.fahrzeuge.map((f: any) => ({ ...f, lat: f.lat + (Math.random() - 0.5) * 0.008, lng: f.lng + (Math.random() - 0.5) * 0.008 })) })); setGpsStatus("Aktualisiert " + new Date().toLocaleTimeString("de-DE")); }, 800); };
 
-  // ── Ladescreen ────────────────────────────────────────────────────────────────
+  // Ladescreen
   if (!dataLoaded) {
     return (
       <div style={{ fontFamily: "system-ui,sans-serif", height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f0f4f3" }}>
@@ -130,12 +130,11 @@ export default function App() {
     );
   }
 
-  // ── Login Screen ──────────────────────────────────────────────────────────────
+  // Login Screen
   if (!currentUser) {
     return <LoginScreen mitarbeiter={data.mitarbeiter} onLogin={(user: any) => setCurrentUser(user)} />;
   }
 
-  // ── Hauptapp ──────────────────────────────────────────────────────────────────
   const ActiveModule = MODULE_MAP[tab];
   const navLabel = (NAV.find(n => n.id === tab) || { label: "Dashboard" }).label;
 
@@ -148,23 +147,19 @@ export default function App() {
     onDetail: setDetailMA,
     selectedBS: selectedBS || (rolle === "baustellen_leitung" ? currentUser.id : null),
     setSelectedBS,
-    rolle,
-    currentUser,
-    kannLohnSehen:        KANN.lohnSehen(rolle),
-    kannMitarbeiterEdit:  KANN.mitarbeiterEdit(rolle),
-    kannBaustellenAnlegen:KANN.baustellenAnlegen(rolle),
+    rolle, currentUser,
+    kannLohnSehen:         KANN.lohnSehen(rolle),
+    kannMitarbeiterEdit:   KANN.mitarbeiterEdit(rolle),
+    kannBaustellenAnlegen: KANN.baustellenAnlegen(rolle),
   };
 
   return (
     <div style={{ fontFamily: "system-ui,sans-serif", height: "100vh", overflow: "hidden", background: "#f0f4f3", display: "flex" }}>
 
-      {/* ── SIDEBAR ───────────────────────────────────────────────────────────── */}
-      <div
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
+      {/* SIDEBAR */}
+      <div onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
         style={{ width: hovered ? 200 : 64, minWidth: hovered ? 200 : 64, background: ACCENT, height: "100vh", display: "flex", flexDirection: "column", padding: "16px 0", flexShrink: 0, transition: "width 0.3s ease, min-width 0.3s ease", overflow: "hidden", zIndex: 10, boxShadow: hovered ? "4px 0 20px rgba(0,0,0,0.15)" : "none" }}
       >
-        {/* Logo + User */}
         <div style={{ padding: "0 12px 20px", display: "flex", alignItems: "center", gap: 10, overflow: "hidden" }}>
           <div style={{ width: 36, height: 36, borderRadius: 8, background: "rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#fff", flexShrink: 0 }}>BM</div>
           <div style={{ opacity: hovered ? 1 : 0, transition: "opacity 0.2s ease", whiteSpace: "nowrap" }}>
@@ -173,7 +168,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* Nav – nur erlaubte Tabs */}
         <div style={{ flex: 1 }}>
           {NAV.filter(item => erlaubteTabs.includes(item.id)).map(item => {
             const active = tab === item.id;
@@ -190,11 +184,8 @@ export default function App() {
           })}
         </div>
 
-        {/* Abmelden */}
         <div style={{ padding: "12px" }}>
-          <button
-            onClick={() => setCurrentUser(null)}
-            title={!hovered ? "Abmelden" : ""}
+          <button onClick={() => setCurrentUser(null)} title={!hovered ? "Abmelden" : ""}
             style={{ width: "100%", padding: "7px 10px", borderRadius: 8, background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", cursor: "pointer", fontSize: 11, display: "flex", alignItems: "center", gap: 10, overflow: "hidden", whiteSpace: "nowrap" }}
           >
             <span style={{ flexShrink: 0 }}>🚪</span>
@@ -203,10 +194,8 @@ export default function App() {
         </div>
       </div>
 
-      {/* ── MAIN ──────────────────────────────────────────────────────────────── */}
+      {/* MAIN */}
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
-
-        {/* Header */}
         <div style={{ padding: "12px 20px 10px", flexShrink: 0, borderBottom: "1px solid #e8eaed", background: "#f0f4f3", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
             <div style={{ fontSize: 17, fontWeight: 700, color: "#222" }}>{navLabel}</div>
@@ -216,17 +205,14 @@ export default function App() {
             {currentUser.name} · {currentUser.rolle_system}
           </div>
         </div>
-
-        {/* Content */}
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden", padding: 14 }}>
           {ActiveModule && <ActiveModule {...moduleProps} />}
         </div>
       </div>
 
-      {/* ── OVERLAYS ──────────────────────────────────────────────────────────── */}
+      {/* OVERLAYS */}
       {showPin && <PinModal onSuccess={() => setShowPin(false)} onCancel={() => setShowPin(false)} />}
       {modal && <EditModal modalType={modal.type} modalMode={modal.mode} initialForm={modal.initialForm} onSave={saveItem} onClose={closeModal} />}
-
       {detailMA && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }} onClick={e => { if (e.target === e.currentTarget) setDetailMA(null); }}>
           <div style={{ ...C.card, width: "min(500px,95vw)", maxHeight: "90vh", overflowY: "auto" }}>
