@@ -22,7 +22,8 @@ export function Dashboard({ data, setTab, saveTermin, deleteTermin }: any) {
   };
 
   const sorted = data.baustellen.filter((b: any)=>b.status!=="abgeschlossen").sort((a: any,b: any)=>Math.ceil((new Date(a.ende).getTime()-Date.now())/86400000)-Math.ceil((new Date(b.ende).getTime()-Date.now())/86400000)).slice(0,5);
-
+const today = new Date().toISOString().split("T")[0];
+const heuteTermine = (data.termine || []).filter((t: any) => t.datum === today);
   return (
     <div style={{ display:"grid", gridTemplateColumns:"1fr 360px", gap:20, alignItems:"start" }}>
       <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
@@ -71,6 +72,20 @@ export function Dashboard({ data, setTab, saveTermin, deleteTermin }: any) {
           </div>
         </div>
       </div>
+      {heuteTermine.length > 0 && (
+  <div style={C.card}>
+    <div style={{ fontSize:16, fontWeight:700, color:"#222", marginBottom:14 }}>📅 Heute</div>
+    {heuteTermine.map((t: any) => (
+      <div key={t.id} style={{ display:"flex", gap:12, padding:"8px 0", borderBottom:"1px solid #f5f5f5", alignItems:"center" }}>
+        <div style={{ width:4, borderRadius:2, background: t.art==="Pflichttermin"?"#E24B4A":ACCENT, alignSelf:"stretch", flexShrink:0 }} />
+        <div>
+          <div style={{ fontSize:13, fontWeight:600, color:"#222" }}>{t.titel}</div>
+          <div style={{ fontSize:11, color:"#aaa" }}>{t.uhrzeit} – {t.art} – {t.baustelle}</div>
+        </div>
+      </div>
+    ))}
+  </div>
+)}
       <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
         <div style={C.card}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
