@@ -1,5 +1,7 @@
 import { useRef } from "react";
 import { C, ACCENT, BS_KAT, MA_KAT } from "../lib/constants";
+import { ROLLEN_LABEL } from "../rollen";
+import type { Rolle } from "../rollen";
 
 function UField({ label, defaultValue, name, type }: any) {
   return (
@@ -35,17 +37,16 @@ export function EditModal({ modalType, modalMode, initialForm, onSave, onClose }
   }
 
   return (
-    <div
-      style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.25)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:200 }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div style={{ ...C.card, width:"min(640px,95vw)", maxHeight:"90vh", overflowY:"auto", border:"1px solid #eee" }}>
-        <div style={{ fontWeight:700, fontSize:17, marginBottom:16, paddingBottom:12, borderBottom:"1px solid #f5f5f5", color:"#222" }}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{ ...C.card, width: "min(640px,95vw)", maxHeight: "90vh", overflowY: "auto", border: "1px solid #eee" }}>
+        <div style={{ fontWeight: 700, fontSize: 17, marginBottom: 16, paddingBottom: 12, borderBottom: "1px solid #f5f5f5", color: "#222" }}>
           {modalMode === "add" ? "Neu anlegen" : "Bearbeiten"}
-          <span style={{ color:ACCENT, fontWeight:500, fontSize:14 }}> – {modalType}</span>
+          <span style={{ color: ACCENT, fontWeight: 500, fontSize: 14 }}> – {modalType}</span>
         </div>
 
         <form key={modalKey} ref={formRef}>
+
+          {/* ── Mitarbeiter ─────────────────────────────────────────────────── */}
           {modalType === "mitarbeiter" && (
             <div>
               <div style={C.r2}><UField label="Name" name="name" defaultValue={d.name} /><UField label="Rolle" name="rolle" defaultValue={d.rolle} /></div>
@@ -66,15 +67,32 @@ export function EditModal({ modalType, modalMode, initialForm, onSave, onClose }
                 <USel label="Kategorie" name="kategorie" defaultValue={d.kategorie} opts={MA_KAT} />
               </div>
               <UField label="Aktuelle Baustelle" name="baustelle" defaultValue={d.baustelle} />
-              <div style={{ marginTop:8, padding:"12px 14px", background:"#f8fffe", borderRadius:10, border:"1px solid #e8f5f3", marginBottom:8 }}>
-                <div style={{ fontSize:12, fontWeight:600, color:ACCENT, marginBottom:6 }}>Team-Kompatibilität</div>
+              <div style={C.r2}>
                 <UField label="Gut mit (Namen kommagetrennt)" name="gutMit" defaultValue={d.gutMit} />
                 <UField label="Nicht mit (Namen kommagetrennt)" name="nichtMit" defaultValue={d.nichtMit} />
               </div>
               <UField label="Bemerkungen" name="bemerkungen" defaultValue={d.bemerkungen} />
+
+              {/* System-Zugang */}
+              <div style={{ marginTop: 12, padding: "12px 14px", background: "#f8f8ff", borderRadius: 10, border: "1px solid #e8eaed" }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "#555", marginBottom: 8 }}>🔐 System-Zugang</div>
+                <div style={C.r2}>
+                  <USel
+                    label="System-Rolle"
+                    name="rolle_system"
+                    defaultValue={d.rolle_system}
+                    opts={Object.keys(ROLLEN_LABEL)}
+                  />
+                  <UField label="PIN (4-stellig)" name="pin" type="password" defaultValue={d.pin} />
+                </div>
+                <div style={{ fontSize: 11, color: "#aaa", marginTop: 4 }}>
+                  Nur ausfüllen wenn die Person Zugang zur App haben soll.
+                </div>
+              </div>
             </div>
           )}
 
+          {/* ── Baustellen ──────────────────────────────────────────────────── */}
           {modalType === "baustellen" && (
             <div>
               <div style={C.r2}><UField label="Name" name="name" defaultValue={d.name} /><UField label="Adresse / Ort" name="ort" defaultValue={d.ort} /></div>
@@ -88,6 +106,7 @@ export function EditModal({ modalType, modalMode, initialForm, onSave, onClose }
             </div>
           )}
 
+          {/* ── Lager ───────────────────────────────────────────────────────── */}
           {modalType === "lager" && (
             <div>
               <div style={C.r2}>
@@ -103,6 +122,7 @@ export function EditModal({ modalType, modalMode, initialForm, onSave, onClose }
             </div>
           )}
 
+          {/* ── Fahrzeuge ───────────────────────────────────────────────────── */}
           {modalType === "fahrzeuge" && (
             <div>
               <div style={C.r2}>
@@ -120,7 +140,7 @@ export function EditModal({ modalType, modalMode, initialForm, onSave, onClose }
           )}
         </form>
 
-        <div style={{ display:"flex", gap:8, justifyContent:"flex-end", marginTop:20 }}>
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 20 }}>
           <button style={C.btnS} onClick={onClose}>Abbrechen</button>
           <button style={C.btnP} onClick={handleSave}>Speichern</button>
         </div>
