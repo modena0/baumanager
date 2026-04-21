@@ -42,7 +42,7 @@ export default function App() {
   const [showPin,     setShowPin]     = useState(false);
   const [authed,      setAuthed]      = useState(false);
   const [appUnlocked, setAppUnlocked] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [hovered,     setHovered]     = useState(false); // ← Hover-State
   const APP_CODE = "bau2026";
 
   useEffect(() => {
@@ -108,9 +108,9 @@ export default function App() {
 
   const ActiveModule = MODULE_MAP[tab];
   const navLabel = (NAV.find(n => n.id === tab) || { label: "Dashboard" }).label;
-  const SW = sidebarOpen ? 200 : 60;
   const moduleProps = { data, setData, setTab, openAdd, openEdit, deleteItem, saveTermin, deleteTermin, callAI, simulateGPS, gpsStatus, onAdd: openAdd, onEdit: openEdit, onDelete: deleteItem, onDetail: setDetailMA };
 
+  // ── Login ─────────────────────────────────────────────────────────────────────
   if (!appUnlocked) {
     return (
       <div style={{ fontFamily: "system-ui,sans-serif", height: "100vh", overflow: "hidden", background: "#f0f4f3", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -125,55 +125,128 @@ export default function App() {
     );
   }
 
+  // Sidebar-Breite: schmal im Ruhezustand, breit bei Hover
+  const SW = hovered ? 200 : 64;
+
   return (
-    // ROOT: 100vh, overflow hidden – KEIN globales Scrollen
     <div style={{ fontFamily: "system-ui,sans-serif", height: "100vh", overflow: "hidden", background: "#f0f4f3", display: "flex" }}>
 
       {/* ── SIDEBAR ───────────────────────────────────────────────────────────── */}
-      <div style={{ width: SW, minWidth: SW, background: ACCENT, height: "100vh", display: "flex", flexDirection: "column", padding: "16px 0", flexShrink: 0, transition: "width 0.25s ease, min-width 0.25s ease", overflow: "hidden" }}>
-        <div style={{ padding: "0 10px 20px", display: "flex", alignItems: "center", justifyContent: sidebarOpen ? "space-between" : "center" }}>
-          {sidebarOpen && (
-            <div style={{ background: "#fff", borderRadius: 10, padding: "8px 10px", display: "flex", alignItems: "center", gap: 8, flex: 1, marginRight: 8 }}>
-              <div style={{ width: 28, height: 28, borderRadius: 6, background: ACCENT, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#fff", flexShrink: 0 }}>BM</div>
-              <div><div style={{ fontSize: 10, fontWeight: 700, color: "#333" }}>BauManager</div><div style={{ fontSize: 8, color: "#aaa" }}>Pro</div></div>
-            </div>
-          )}
-          <button onClick={() => setSidebarOpen(o => !o)} style={{ background: "rgba(255,255,255,0.15)", border: "none", borderRadius: 8, width: 30, height: 30, cursor: "pointer", color: "#fff", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            {sidebarOpen ? "◀" : "▶"}
-          </button>
+      <div
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          width: SW,
+          minWidth: SW,
+          background: ACCENT,
+          height: "100vh",
+          display: "flex",
+          flexDirection: "column",
+          padding: "16px 0",
+          flexShrink: 0,
+          // Sanfte Animation
+          transition: "width 0.3s ease, min-width 0.3s ease",
+          overflow: "hidden",
+          zIndex: 10,
+          // Schatten nur wenn offen
+          boxShadow: hovered ? "4px 0 20px rgba(0,0,0,0.15)" : "none",
+        }}
+      >
+        {/* Logo */}
+        <div style={{ padding: "0 12px 20px", display: "flex", alignItems: "center", gap: 10, overflow: "hidden" }}>
+          <div style={{ width: 36, height: 36, borderRadius: 8, background: "rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#fff", flexShrink: 0 }}>BM</div>
+          <div style={{ opacity: hovered ? 1 : 0, transition: "opacity 0.2s ease", whiteSpace: "nowrap", overflow: "hidden" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#fff" }}>BauManager</div>
+            <div style={{ fontSize: 9, color: "rgba(255,255,255,0.6)" }}>Pro</div>
+          </div>
         </div>
-        <div style={{ flex: 1, overflowY: "auto" }}>
+
+        {/* Nav Items */}
+        <div style={{ flex: 1 }}>
           {NAV.map(item => {
             const active = tab === item.id;
             return (
-              <div key={item.id} style={{ position: "relative" }} title={!sidebarOpen ? item.label : ""}>
-                <button onClick={() => setTab(item.id)} style={{ display: "flex", alignItems: "center", gap: 10, padding: sidebarOpen ? "11px 16px" : "11px 0", justifyContent: sidebarOpen ? "flex-start" : "center", border: "none", background: active ? "rgba(255,255,255,0.2)" : "transparent", cursor: "pointer", color: active ? "#fff" : "rgba(255,255,255,0.75)", fontSize: 13, fontWeight: active ? 600 : 400, borderLeft: active ? "3px solid #fff" : "3px solid transparent", boxSizing: "border-box", width: "100%" }}>
-                  <span style={{ fontSize: 16, flexShrink: 0 }}>{item.icon}</span>
-                  {sidebarOpen && <span style={{ whiteSpace: "nowrap" }}>{item.label}</span>}
-                  {sidebarOpen && item.label === "Kalender" && pflichtCount > 0 && <span style={{ marginLeft: "auto", background: "#E24B4A", color: "#fff", borderRadius: 10, fontSize: 10, padding: "1px 6px", fontWeight: 700 }}>{pflichtCount}</span>}
-                  {!sidebarOpen && item.label === "Kalender" && pflichtCount > 0 && <span style={{ position: "absolute", top: 6, right: 6, background: "#E24B4A", color: "#fff", borderRadius: "50%", fontSize: 9, width: 16, height: 16, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{pflichtCount}</span>}
-                </button>
-              </div>
+              <button
+                key={item.id}
+                onClick={() => setTab(item.id)}
+                title={!hovered ? item.label : ""}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  padding: "11px 14px",
+                  border: "none",
+                  background: active ? "rgba(255,255,255,0.2)" : "transparent",
+                  cursor: "pointer",
+                  color: active ? "#fff" : "rgba(255,255,255,0.75)",
+                  fontSize: 13,
+                  fontWeight: active ? 600 : 400,
+                  borderLeft: active ? "3px solid #fff" : "3px solid transparent",
+                  boxSizing: "border-box",
+                  width: "100%",
+                  textAlign: "left",
+                  transition: "background 0.15s",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                }}
+              >
+                {/* Icon – immer sichtbar */}
+                <span style={{ fontSize: 17, flexShrink: 0 }}>{item.icon}</span>
+
+                {/* Label – erscheint bei Hover */}
+                <span style={{ opacity: hovered ? 1 : 0, transition: "opacity 0.2s ease", overflow: "hidden", flex: 1 }}>
+                  {item.label}
+                </span>
+
+                {/* Badge */}
+                {item.label === "Kalender" && pflichtCount > 0 && (
+                  <span style={{
+                    background: "#E24B4A", color: "#fff", borderRadius: 10,
+                    fontSize: 10, padding: "1px 6px", fontWeight: 700, flexShrink: 0,
+                    opacity: hovered ? 1 : 0,
+                    transition: "opacity 0.2s ease",
+                  }}>{pflichtCount}</span>
+                )}
+                {/* Badge als Punkt wenn eingeklappt */}
+                {item.label === "Kalender" && pflichtCount > 0 && !hovered && (
+                  <span style={{ position: "absolute", top: 8, right: 8, width: 8, height: 8, borderRadius: "50%", background: "#E24B4A" }} />
+                )}
+              </button>
             );
           })}
         </div>
-        <div style={{ padding: "12px 8px 0" }}>
-          <button onClick={() => setShowPin(true)} style={{ width: "100%", padding: "7px", borderRadius: 8, background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", cursor: "pointer", fontSize: 11 }}>
-            {sidebarOpen ? (authed ? "Admin aktiv" : "Admin-Login") : "🔑"}
+
+        {/* Admin Button */}
+        <div style={{ padding: "12px" }}>
+          <button
+            onClick={() => setShowPin(true)}
+            title={!hovered ? (authed ? "Admin aktiv" : "Admin-Login") : ""}
+            style={{
+              width: "100%", padding: "7px 10px", borderRadius: 8,
+              background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)",
+              color: "#fff", cursor: "pointer", fontSize: 11,
+              display: "flex", alignItems: "center", gap: 10,
+              overflow: "hidden", whiteSpace: "nowrap",
+            }}
+          >
+            <span style={{ flexShrink: 0 }}>🔑</span>
+            <span style={{ opacity: hovered ? 1 : 0, transition: "opacity 0.2s ease" }}>
+              {authed ? "Admin aktiv" : "Admin-Login"}
+            </span>
           </button>
         </div>
       </div>
 
-      {/* ── MAIN: flex column, 100vh, kein Overflow ───────────────────────────── */}
+      {/* ── MAIN ──────────────────────────────────────────────────────────────── */}
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
 
-        {/* Header – fix, schrumpft nie */}
+        {/* Header */}
         <div style={{ padding: "12px 20px 10px", flexShrink: 0, borderBottom: "1px solid #e8eaed", background: "#f0f4f3" }}>
           <div style={{ fontSize: 17, fontWeight: 700, color: "#222" }}>{navLabel}</div>
           <div style={{ fontSize: 11, color: "#bbb", marginTop: 1 }}>{new Date().toLocaleDateString("de-DE", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</div>
         </div>
 
-        {/* Content – nimmt restliche Höhe, KEIN Overflow */}
+        {/* Content */}
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden", padding: 14 }}>
           {ActiveModule && <ActiveModule {...moduleProps} />}
         </div>
