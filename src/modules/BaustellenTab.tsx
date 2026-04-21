@@ -48,8 +48,14 @@ const assignEQ = (bsId: number, lgId: number) => {
     return { ...d, baustellen: nb };
   });
 };
-
-const bsGruppen = BS_KAT.map(k => ({ key:k, members:data.baustellen.filter((b: any) => k === "Sonstiges" ? !BS_KAT.filter(x => x !== "Sonstiges").includes(b.kategorie) : b.kategorie===k) })).filter(g=>g.members.length>0);
+const bsGruppen = BS_KAT.map(k => ({
+  key: k,
+  members: data.baustellen.filter((b: any) =>
+    k === "Sonstiges"
+      ? !["Tiefbau","LSA","Straße"].includes(b.kategorie) || !b.kategorie
+      : b.kategorie === k
+  )
+})).filter(g => g.members.length > 0);
   return (
     <div>
       <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:16 }}>

@@ -12,7 +12,7 @@ export const NAV = [
   { id: 7, label: "KI",          icon: "✦" },
 ];
 
-export const BS_KAT  = ["Tiefbau", "LSA", "Straße"];
+export const BS_KAT  = ["Tiefbau", "LSA", "Straße", "Sonstiges"];
 export const MA_KAT  = ["LKW Fahrer", "Tiefbau", "LSA", "Sonstige"];
 export const T_ARTEN = ["Pflichttermin", "Besprechung", "Lieferung", "Abnahme", "Behoerde", "Sonstiges"];
 
