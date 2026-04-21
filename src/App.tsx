@@ -5,7 +5,7 @@ import { autoKat } from "./lib/utils";
 import { supabase } from "./lib/supabase";
 import { EditModal }       from "./components/EditModal";
 import { PinModal }        from "./components/PinModal";
-import { LoginScreen }     from "./loginscreen";
+import { LoginScreen }     from "./LoginScreen";
 import { Dashboard }       from "./modules/Dashboard";
 import { MitarbeiterTab }  from "./modules/MitarbeiterTab";
 import { BaustellenTab }   from "./modules/BaustellenTab";
