@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { supabase } from "../lib/supabase";
 import { C, ACCENT, BS_KAT } from "../lib/constants";
 import { getProgress, pill } from "../lib/utils";
 import { AufgabenPanel } from "../components/Kalender";
@@ -6,20 +7,47 @@ import { AufgabenPanel } from "../components/Kalender";
 export function BaustellenTab({ data, setData, openAdd, openEdit, deleteItem }: any) {
   const [expId, setExpId] = useState<number|null>(null);
 
-  const assignMA = (bsId: number, maId: number) => setData((d: any) => {
-    const nb = d.baustellen.map((b: any) => { if (b.id!==bsId) return b; const t = b.mitarbeiter.includes(maId)?b.mitarbeiter.filter((i: number)=>i!==maId):[...b.mitarbeiter,maId]; return {...b,mitarbeiter:t}; });
-    const nm = nb.find((b: any)=>b.id===bsId).name; const was = d.baustellen.find((b: any)=>b.id===bsId).mitarbeiter.includes(maId);
-    return {...d, baustellen:nb, mitarbeiter:d.mitarbeiter.map((m: any)=>m.id!==maId?m:{...m,baustelle:was?"-":nm})};
+ const assignMA = (bsId: number, maId: number) => {
+  setData((d: any) => {
+    const nb = d.baustellen.map((b: any) => {
+      if (b.id !== bsId) return b;
+      const t = b.mitarbeiter.includes(maId) ? b.mitarbeiter.filter((i: number) => i !== maId) : [...b.mitarbeiter, maId];
+      supabase.from("baustellen").update({ mitarbeiter: t }).eq("id", bsId);
+      return { ...b, mitarbeiter: t };
+    });
+    const nm = nb.find((b: any) => b.id === bsId).name;
+    const was = d.baustellen.find((b: any) => b.id === bsId).mitarbeiter.includes(maId);
+    return { ...d, baustellen: nb, mitarbeiter: d.mitarbeiter.map((m: any) => m.id !== maId ? m : { ...m, baustelle: was ? "-" : nm }) };
   });
-  const assignFZ = (bsId: number, fzId: number) => setData((d: any) => {
-    const nb = d.baustellen.map((b: any) => { if (b.id!==bsId) return b; const fz=b.fahrzeuge||[]; const up=fz.includes(fzId)?fz.filter((i: number)=>i!==fzId):[...fz,fzId]; return {...b,fahrzeuge:up}; });
-    const nm = nb.find((b: any)=>b.id===bsId).name; const was = (d.baustellen.find((b: any)=>b.id===bsId).fahrzeuge||[]).includes(fzId);
-    return {...d, baustellen:nb, fahrzeuge:d.fahrzeuge.map((f: any)=>f.id!==fzId?f:{...f,baustelle:was?"-":nm,status:was?"verfügbar":"im Einsatz"})};
+};
+
+const assignFZ = (bsId: number, fzId: number) => {
+  setData((d: any) => {
+    const nb = d.baustellen.map((b: any) => {
+      if (b.id !== bsId) return b;
+      const fz = b.fahrzeuge || [];
+      const up = fz.includes(fzId) ? fz.filter((i: number) => i !== fzId) : [...fz, fzId];
+      supabase.from("baustellen").update({ fahrzeuge: up }).eq("id", bsId);
+      return { ...b, fahrzeuge: up };
+    });
+    const nm = nb.find((b: any) => b.id === bsId).name;
+    const was = (d.baustellen.find((b: any) => b.id === bsId).fahrzeuge || []).includes(fzId);
+    return { ...d, baustellen: nb, fahrzeuge: d.fahrzeuge.map((f: any) => f.id !== fzId ? f : { ...f, baustelle: was ? "-" : nm, status: was ? "verfügbar" : "im Einsatz" }) };
   });
-  const assignEQ = (bsId: number, lgId: number) => setData((d: any) => {
-    const nb = d.baustellen.map((b: any) => { if (b.id!==bsId) return b; const eq=b.equipment||[]; const up=eq.includes(lgId)?eq.filter((i: number)=>i!==lgId):[...eq,lgId]; return {...b,equipment:up}; });
-    return {...d, baustellen:nb};
+};
+
+const assignEQ = (bsId: number, lgId: number) => {
+  setData((d: any) => {
+    const nb = d.baustellen.map((b: any) => {
+      if (b.id !== bsId) return b;
+      const eq = b.equipment || [];
+      const up = eq.includes(lgId) ? eq.filter((i: number) => i !== lgId) : [...eq, lgId];
+      supabase.from("baustellen").update({ equipment: up }).eq("id", bsId);
+      return { ...b, equipment: up };
+    });
+    return { ...d, baustellen: nb };
   });
+};
 
   const bsGruppen = BS_KAT.map(k => ({ key:k, members:data.baustellen.filter((b: any)=>b.kategorie===k) })).filter(g=>g.members.length>0);
 

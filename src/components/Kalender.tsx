@@ -1,4 +1,7 @@
+
+
 import React, { useState } from "react";
+import { supabase } from "../lib/supabase";
 import { C, ACCENT, T_ARTEN, T_COL, MN, DN } from "../lib/constants";
 
 export function TerminForm({ onSave, onCancel, prefill = {} as any, baustellen = [] as any[] }: { onSave: any, onCancel: any, prefill?: any, baustellen?: any[] }) {
@@ -48,11 +51,16 @@ export function TerminForm({ onSave, onCancel, prefill = {} as any, baustellen =
 
 export function AufgabenPanel({ baustelle: b, setData }: any) {
   const [neu, setNeu] = useState("");
+
   const auf = b.aufgaben || [];
   const done = auf.filter((a: any) => a.erledigt).length;
   const prog = auf.length > 0 ? Math.round(done / auf.length * 100) : 0;
 
-  function updBS(fn: (x: any) => any) { setData((d: any) => ({ ...d, baustellen: d.baustellen.map((x: any) => x.id === b.id ? fn(x) : x) })); }
+  async function updBS(fn: (x: any) => any) {
+    const updated = fn(b);
+    await supabase.from("baustellen").update({ aufgaben: updated.aufgaben }).eq("id", b.id);
+    setData((d: any) => ({ ...d, baustellen: d.baustellen.map((x: any) => x.id === b.id ? updated : x) }));
+  }
   function toggle(id: number) { updBS(x => ({ ...x, aufgaben: x.aufgaben.map((a: any) => a.id === id ? { ...a, erledigt: !a.erledigt } : a) })); }
   function del(id: number) { updBS(x => ({ ...x, aufgaben: x.aufgaben.filter((a: any) => a.id !== id) })); }
   function add() {
@@ -60,6 +68,7 @@ export function AufgabenPanel({ baustelle: b, setData }: any) {
     updBS(x => { const l = x.aufgaben || []; const nid = Math.max(0, ...l.map((a: any) => a.id)) + 1; return { ...x, aufgaben: [...l, { id: nid, titel: neu.trim(), erledigt: false }] }; });
     setNeu("");
   }
+  // ... Rest bleibt gleich (return JSX)
 
   return (
     <div style={{ borderTop:"1px solid #e8f5f3", padding:"14px 16px", background:"#f8fffe" }}>
