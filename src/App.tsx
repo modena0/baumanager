@@ -89,12 +89,19 @@ const APP_CODE = "bau2026";
   };
 
   // ── Termine ───────────────────────────────────────────────────────────
-  const saveTermin = (d: any) => {
-    if (d.id) setData((st: any) => ({ ...st, termine: st.termine.map((t: any) => t.id === d.id ? d : t) }));
-    else { const nid = Math.max(0, ...(data.termine || []).map((x: any) => x.id)) + 1; setData((st: any) => ({ ...st, termine: [...(st.termine || []), { ...d, id: nid }] })); }
-  };
-  const deleteTermin = (id: number) => setData((d: any) => ({ ...d, termine: d.termine.filter((t: any) => t.id !== id) }));
-
+  const saveTermin = async (d: any) => {
+  if (d.id) {
+    await supabase.from("termine").update(d).eq("id", d.id);
+    setData((st: any) => ({ ...st, termine: st.termine.map((t: any) => t.id === d.id ? d : t) }));
+  } else {
+    const { data: neu } = await supabase.from("termine").insert([d]).select();
+    if (neu) setData((st: any) => ({ ...st, termine: [...(st.termine || []), neu[0]] }));
+  }
+};
+const deleteTermin = async (id: number) => {
+  await supabase.from("termine").delete().eq("id", id);
+  setData((d: any) => ({ ...d, termine: d.termine.filter((t: any) => t.id !== id) }));
+};
   // ── Modal helpers ─────────────────────────────────────────────────────
   const openAdd = (type: string) => {
     const init = type === "baustellen" ? { mitarbeiter:[], fahrzeuge:[], equipment:[], aufgaben:[] } : {};
