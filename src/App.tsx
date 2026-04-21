@@ -14,7 +14,6 @@ import { FuhrparkTab }      from "./modules/FuhrparkTab";
 import { LagerTab }         from "./modules/LagerTab";
 import { KITab }            from "./modules/KITab";
 
-
 const MODULE_MAP: Record<number, ComponentType<any>> = {
   0: Dashboard,
   1: MitarbeiterTab,
@@ -26,6 +25,22 @@ const MODULE_MAP: Record<number, ComponentType<any>> = {
   7: KITab,
 };
 
+// ── Hilfsfunktionen außerhalb der Komponente ──────────────────────────────────
+const fixArr = (val: any): any[] => {
+  if (!val) return [];
+  if (Array.isArray(val)) return val;
+  return val.split(",").map((s: string) => s.trim()).filter(Boolean);
+};
+
+const fixBS = (b: any) => ({
+  ...b,
+  anforderungen: fixArr(b.anforderungen),
+  mitarbeiter:   fixArr(b.mitarbeiter),
+  fahrzeuge:     fixArr(b.fahrzeuge),
+  equipment:     fixArr(b.equipment),
+  aufgaben:      Array.isArray(b.aufgaben) ? b.aufgaben : [],
+});
+
 export default function App() {
   const [tab,       setTab]       = useState(0);
   const [data,      setData]      = useState(INIT);
@@ -35,40 +50,27 @@ export default function App() {
   const [showPin,   setShowPin]   = useState(false);
   const [authed,    setAuthed]    = useState(false);
   const [appUnlocked, setAppUnlocked] = useState(false);
-const APP_CODE = "bau2026";
+  const APP_CODE = "bau2026";
+
   useEffect(() => {
-  async function loadData() {
-  const [ma, bs, fz, lg, tr] = await Promise.all([
-    supabase.from("mitarbeiter").select("*"),
-    supabase.from("baustellen").select("*"),
-    supabase.from("fahrzeuge").select("*"),
-    supabase.from("lager").select("*"),
-    supabase.from("termine").select("*"),
-  ]);
-  const fixArr = (val: any) => {
-    if (!val) return [];
-    if (Array.isArray(val)) return val;
-    return val.split(",").map((s: string) => s.trim()).filter(Boolean);
-  };
-  const fixBS = (b: any) => ({
-    ...b,
-    anforderungen: fixArr(b.anforderungen),
-    mitarbeiter:   fixArr(b.mitarbeiter),
-    fahrzeuge:     fixArr(b.fahrzeuge),
-    equipment:     fixArr(b.equipment),
-    aufgaben:      Array.isArray(b.aufgaben) ? b.aufgaben : [],
-  });
-  setData({
-  mitarbeiter: ma.data || [],
-  baustellen:  bs.data ? bs.data.map(fixBS) : [],
-  fahrzeuge:   fz.data || [],
-  lager:       lg.data || [],
-  termine:     tr.data || [],
-});
-}
-    
-  loadData();
-}, []);
+    async function loadData() {
+      const [ma, bs, fz, lg, tr] = await Promise.all([
+        supabase.from("mitarbeiter").select("*"),
+        supabase.from("baustellen").select("*"),
+        supabase.from("fahrzeuge").select("*"),
+        supabase.from("lager").select("*"),
+        supabase.from("termine").select("*"),
+      ]);
+      setData({
+        mitarbeiter: ma.data || [],
+        baustellen:  bs.data ? bs.data.map(fixBS) : [],
+        fahrzeuge:   fz.data || [],
+        lager:       lg.data || [],
+        termine:     Array.isArray(tr.data) ? tr.data : [],
+      });
+    }
+    loadData();
+  }, []);
 
   const today = new Date().toISOString().split("T")[0];
   const pflichtCount = (data.termine || []).filter((t: any) => t.art === "Pflichttermin" && t.datum >= today).length;
@@ -90,18 +92,19 @@ const APP_CODE = "bau2026";
 
   // ── Termine ───────────────────────────────────────────────────────────
   const saveTermin = async (d: any) => {
-  if (d.id) {
-    await supabase.from("termine").update(d).eq("id", d.id);
-    setData((st: any) => ({ ...st, termine: st.termine.map((t: any) => t.id === d.id ? d : t) }));
-  } else {
-    const { data: neu } = await supabase.from("termine").insert([d]).select();
-    if (neu) setData((st: any) => ({ ...st, termine: [...(st.termine || []), neu[0]] }));
-  }
-};
-const deleteTermin = async (id: number) => {
-  await supabase.from("termine").delete().eq("id", id);
-  setData((d: any) => ({ ...d, termine: d.termine.filter((t: any) => t.id !== id) }));
-};
+    if (d.id) {
+      await supabase.from("termine").update(d).eq("id", d.id);
+      setData((st: any) => ({ ...st, termine: st.termine.map((t: any) => t.id === d.id ? d : t) }));
+    } else {
+      const { data: neu } = await supabase.from("termine").insert([d]).select();
+      if (neu) setData((st: any) => ({ ...st, termine: [...(st.termine || []), neu[0]] }));
+    }
+  };
+  const deleteTermin = async (id: number) => {
+    await supabase.from("termine").delete().eq("id", id);
+    setData((d: any) => ({ ...d, termine: d.termine.filter((t: any) => t.id !== id) }));
+  };
+
   // ── Modal helpers ─────────────────────────────────────────────────────
   const openAdd = (type: string) => {
     const init = type === "baustellen" ? { mitarbeiter:[], fahrzeuge:[], equipment:[], aufgaben:[] } : {};
@@ -128,36 +131,53 @@ const deleteTermin = async (id: number) => {
       .filter(Boolean);
 
   const saveItem = async (f: any) => {
-  const { type, mode, initialForm } = modal;
-  const id = initialForm.id;
-  const p = { ...f };
-  if (type === "mitarbeiter") {
-    p.qualifikationen = f.qualifikationen ? f.qualifikationen.split(",").map((s: string) => s.trim()).filter(Boolean) : [];
-    p.fuehrerschein   = f.fuehrerschein   ? f.fuehrerschein.split(",").map((s: string) => s.trim()).filter(Boolean) : [];
-    p.stundenlohn     = parseFloat(f.stundenlohn) || 0;
-    p.urlaubstage     = parseInt(f.urlaubstage)   || 0;
-    p.urlaubGenommen  = parseInt(f.urlaubGenommen)|| 0;
-    p.gutMit   = pn(f.gutMit);
-    p.nichtMit = pn(f.nichtMit);
-  }
-  if (type === "baustellen") {
-    p.anforderungen = f.anforderungen ? f.anforderungen.split(",").map((s: string) => s.trim()).filter(Boolean) : [];
-    p.mitarbeiter = p.mitarbeiter || []; p.fahrzeuge = p.fahrzeuge || []; p.equipment = p.equipment || []; p.aufgaben = p.aufgaben || [];
-  }
-  if (mode === "add") {
-    const { data } = await supabase.from(type).insert([p]).select();
-    if (data) setData((d: any) => { const n = { ...d }; n[type] = [...(d[type] || []), data[0]]; return n; });
-  } else {
-    await supabase.from(type).update(p).eq("id", id);
-    setData((d: any) => { const n = { ...d }; n[type] = d[type].map((x: any) => x.id === id ? { ...p, id } : x); return n; });
-  }
-  closeModal();
-};
+    const { type, mode, initialForm } = modal;
+    const id = initialForm.id;
+    const p = { ...f };
+
+    if (type === "mitarbeiter") {
+      p.qualifikationen = f.qualifikationen ? f.qualifikationen.split(",").map((s: string) => s.trim()).filter(Boolean) : [];
+      p.fuehrerschein   = f.fuehrerschein   ? f.fuehrerschein.split(",").map((s: string) => s.trim()).filter(Boolean) : [];
+      p.stundenlohn     = parseFloat(f.stundenlohn) || 0;
+      p.urlaubstage     = parseInt(f.urlaubstage)   || 0;
+      p.urlaubGenommen  = parseInt(f.urlaubGenommen)|| 0;
+      p.gutMit   = pn(f.gutMit);
+      p.nichtMit = pn(f.nichtMit);
+    }
+
+    if (type === "baustellen") {
+      p.anforderungen = f.anforderungen ? f.anforderungen.split(",").map((s: string) => s.trim()).filter(Boolean) : [];
+      p.mitarbeiter   = Array.isArray(p.mitarbeiter) ? p.mitarbeiter : [];
+      p.fahrzeuge     = Array.isArray(p.fahrzeuge)   ? p.fahrzeuge   : [];
+      p.equipment     = Array.isArray(p.equipment)   ? p.equipment   : [];
+      p.aufgaben      = Array.isArray(p.aufgaben)    ? p.aufgaben    : [];
+    }
+
+    if (mode === "add") {
+      const { data: neu } = await supabase.from(type).insert([p]).select();
+      if (neu) setData((d: any) => {
+        const n = { ...d };
+        const item = type === "baustellen" ? fixBS(neu[0]) : neu[0];
+        n[type] = [...(d[type] || []), item];
+        return n;
+      });
+    } else {
+      await supabase.from(type).update(p).eq("id", id);
+      setData((d: any) => {
+        const n = { ...d };
+        const item = type === "baustellen" ? fixBS({ ...p, id }) : { ...p, id };
+        n[type] = d[type].map((x: any) => x.id === id ? item : x);
+        return n;
+      });
+    }
+    closeModal();
+  };
 
   const deleteItem = async (type: string, id: number) => {
-  await supabase.from(type).delete().eq("id", id);
-  setData((d: any) => { const n = { ...d }; n[type] = d[type].filter((x: any) => x.id !== id); return n; });
-};
+    await supabase.from(type).delete().eq("id", id);
+    setData((d: any) => { const n = { ...d }; n[type] = d[type].filter((x: any) => x.id !== id); return n; });
+  };
+
   const simulateGPS = () => {
     setGpsStatus("Aktualisiere...");
     setTimeout(() => {
@@ -181,6 +201,27 @@ const deleteTermin = async (id: number) => {
   };
 
   if (!appUnlocked) {
+    return (
+      <div style={{ fontFamily:"system-ui,sans-serif", minHeight:"100vh", background:"#f0f4f3", display:"flex", alignItems:"center", justifyContent:"center" }}>
+        <div style={{ ...C.card, width:"min(360px,95vw)", textAlign:"center" }}>
+          <div style={{ width:52, height:52, borderRadius:12, background:ACCENT, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, fontWeight:700, color:"#fff", margin:"0 auto 16px" }}>BM</div>
+          <div style={{ fontSize:18, fontWeight:700, color:"#222", marginBottom:4 }}>BauManager</div>
+          <div style={{ fontSize:12, color:"#aaa", marginBottom:24 }}>Bitte Zugangscode eingeben</div>
+          <input
+            id="code-input"
+            type="password"
+            placeholder="Zugangscode"
+            style={{ ...C.inp, textAlign:"center", fontSize:16, letterSpacing:4, marginBottom:12 }}
+            onKeyDown={e => { if (e.key === "Enter") { const v = (document.getElementById("code-input") as HTMLInputElement).value; if (v === APP_CODE) setAppUnlocked(true); }}}
+          />
+          <button style={{ ...C.btnP, width:"100%" }} onClick={() => { const v = (document.getElementById("code-input") as HTMLInputElement).value; if (v === APP_CODE) setAppUnlocked(true); }}>
+            Einloggen
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ fontFamily:"system-ui,sans-serif", minHeight:"100vh", background:"#f0f4f3", display:"flex" }}>
 
@@ -251,5 +292,4 @@ const deleteTermin = async (id: number) => {
       )}
     </div>
   );
-}
 }
