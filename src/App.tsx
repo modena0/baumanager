@@ -309,7 +309,6 @@ export default function App() {
           <div style={{ fontSize: 18, fontWeight: 700, color: "#222" }}>{navLabel}</div>
           <div style={{ fontSize: 11, color: "#bbb", marginTop: 2 }}>{new Date().toLocaleDateString("de-DE", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</div>
         </div>
-
         {/* Scrollbarer Inhalt */}
         <div style={{ flex: 1, overflowY: "auto", padding: 20, scrollbarWidth: "thin", scrollbarColor: "#d0d0d0 transparent" }}>
           {ActiveModule && <ActiveModule {...moduleProps} />}
