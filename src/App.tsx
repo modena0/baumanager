@@ -15,14 +15,8 @@ import { LagerTab }        from "./modules/LagerTab";
 import { KITab }           from "./modules/KITab";
 
 const MODULE_MAP: Record<number, ComponentType<any>> = {
-  0: Dashboard,
-  1: MitarbeiterTab,
-  2: ZuordnungsBoard,
-  3: BaustellenTab,
-  4: KalenderTab,
-  5: LagerTab,
-  6: FuhrparkTab,
-  7: KITab,
+  0: Dashboard, 1: MitarbeiterTab, 2: ZuordnungsBoard, 3: BaustellenTab,
+  4: KalenderTab, 5: LagerTab, 6: FuhrparkTab, 7: KITab,
 };
 
 const fixArr = (val: any): any[] => {
@@ -30,7 +24,6 @@ const fixArr = (val: any): any[] => {
   if (Array.isArray(val)) return val;
   return val.split(",").map((s: string) => s.trim()).filter(Boolean);
 };
-
 const fixBS = (b: any) => ({
   ...b,
   anforderungen: fixArr(b.anforderungen),
@@ -78,146 +71,65 @@ export default function App() {
   const callAI = (prompt: string, setter: (s: string) => void, loadSetter: (b: boolean) => void) => {
     loadSetter(true); setter("");
     const ctx = "Bau-Logistik-Experte. Antworte auf Deutsch. Daten:" + JSON.stringify({ mitarbeiter: data.mitarbeiter, baustellen: data.baustellen, fahrzeuge: data.fahrzeuge, lager: data.lager, termine: data.termine });
-    fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 800, system: ctx, messages: [{ role: "user", content: prompt }] }),
-    })
-      .then(r => r.json())
-      .then(d => setter((d.content && d.content[0] && d.content[0].text) || "Keine Antwort."))
-      .catch(e => setter("Fehler: " + e.message))
-      .finally(() => loadSetter(false));
+    fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 800, system: ctx, messages: [{ role: "user", content: prompt }] }) })
+      .then(r => r.json()).then(d => setter((d.content && d.content[0] && d.content[0].text) || "Keine Antwort.")).catch(e => setter("Fehler: " + e.message)).finally(() => loadSetter(false));
   };
 
   const saveTermin = async (d: any) => {
-    if (d.id) {
-      await supabase.from("termine").update(d).eq("id", d.id);
-      setData((st: any) => ({ ...st, termine: st.termine.map((t: any) => t.id === d.id ? d : t) }));
-    } else {
-      const { data: neu } = await supabase.from("termine").insert([d]).select();
-      if (neu) setData((st: any) => ({ ...st, termine: [...(st.termine || []), neu[0]] }));
-    }
+    if (d.id) { await supabase.from("termine").update(d).eq("id", d.id); setData((st: any) => ({ ...st, termine: st.termine.map((t: any) => t.id === d.id ? d : t) })); }
+    else { const { data: neu } = await supabase.from("termine").insert([d]).select(); if (neu) setData((st: any) => ({ ...st, termine: [...(st.termine || []), neu[0]] })); }
   };
+  const deleteTermin = async (id: number) => { await supabase.from("termine").delete().eq("id", id); setData((d: any) => ({ ...d, termine: d.termine.filter((t: any) => t.id !== id) })); };
 
-  const deleteTermin = async (id: number) => {
-    await supabase.from("termine").delete().eq("id", id);
-    setData((d: any) => ({ ...d, termine: d.termine.filter((t: any) => t.id !== id) }));
-  };
-
-  const openAdd = (type: string) => {
-    const init = type === "baustellen" ? { mitarbeiter: [], fahrzeuge: [], equipment: [], aufgaben: [] } : {};
-    setModal({ type, mode: "add", initialForm: init });
-  };
-
+  const openAdd = (type: string) => { const init = type === "baustellen" ? { mitarbeiter: [], fahrzeuge: [], equipment: [], aufgaben: [] } : {}; setModal({ type, mode: "add", initialForm: init }); };
   const openEdit = (type: string, item: any) => {
     const f = { ...item };
     if (type === "mitarbeiter") {
-      f.qualifikationen = (item.qualifikationen || []).join(", ");
-      f.fuehrerschein   = (item.fuehrerschein   || []).join(", ");
-      f.gutMit   = (item.gutMit  || []).map((id: number) => { const m = data.mitarbeiter.find((x: any) => x.id === id); return m ? m.name : ""; }).join(", ");
+      f.qualifikationen = (item.qualifikationen || []).join(", "); f.fuehrerschein = (item.fuehrerschein || []).join(", ");
+      f.gutMit = (item.gutMit || []).map((id: number) => { const m = data.mitarbeiter.find((x: any) => x.id === id); return m ? m.name : ""; }).join(", ");
       f.nichtMit = (item.nichtMit || []).map((id: number) => { const m = data.mitarbeiter.find((x: any) => x.id === id); return m ? m.name : ""; }).join(", ");
     }
     if (type === "baustellen") f.anforderungen = (item.anforderungen || []).join(", ");
     setModal({ type, mode: "edit", initialForm: f });
   };
-
   const closeModal = () => setModal(null);
-
-  const pn = (str: string) =>
-    (str || "").split(",").map((s: string) => s.trim()).filter(Boolean)
-      .map((n: string) => { const m = data.mitarbeiter.find((x: any) => x.name.toLowerCase().includes(n.toLowerCase())); return m ? m.id : null; })
-      .filter(Boolean);
+  const pn = (str: string) => (str || "").split(",").map((s: string) => s.trim()).filter(Boolean).map((n: string) => { const m = data.mitarbeiter.find((x: any) => x.name.toLowerCase().includes(n.toLowerCase())); return m ? m.id : null; }).filter(Boolean);
 
   const saveItem = async (f: any) => {
-    const { type, mode, initialForm } = modal;
-    const id = initialForm.id;
-    const p = { ...f };
-    if (type === "mitarbeiter") {
-      p.qualifikationen = f.qualifikationen ? f.qualifikationen.split(",").map((s: string) => s.trim()).filter(Boolean) : [];
-      p.fuehrerschein   = f.fuehrerschein   ? f.fuehrerschein.split(",").map((s: string) => s.trim()).filter(Boolean) : [];
-      p.stundenlohn     = parseFloat(f.stundenlohn) || 0;
-      p.urlaubstage     = parseInt(f.urlaubstage)   || 0;
-      p.urlaubGenommen  = parseInt(f.urlaubGenommen) || 0;
-      p.gutMit   = pn(f.gutMit);
-      p.nichtMit = pn(f.nichtMit);
-    }
-    if (type === "baustellen") {
-      p.anforderungen = f.anforderungen ? f.anforderungen.split(",").map((s: string) => s.trim()).filter(Boolean) : [];
-      p.mitarbeiter   = Array.isArray(p.mitarbeiter) ? p.mitarbeiter : [];
-      p.fahrzeuge     = Array.isArray(p.fahrzeuge)   ? p.fahrzeuge   : [];
-      p.equipment     = Array.isArray(p.equipment)   ? p.equipment   : [];
-      p.aufgaben      = Array.isArray(p.aufgaben)    ? p.aufgaben    : [];
-    }
-    if (mode === "add") {
-      const { data: neu } = await supabase.from(type).insert([p]).select();
-      if (neu) setData((d: any) => {
-        const n = { ...d };
-        const item = type === "baustellen" ? fixBS(neu[0]) : neu[0];
-        n[type] = [...(d[type] || []), item];
-        return n;
-      });
-    } else {
-      await supabase.from(type).update(p).eq("id", id);
-      setData((d: any) => {
-        const n = { ...d };
-        const item = type === "baustellen" ? fixBS({ ...p, id }) : { ...p, id };
-        n[type] = d[type].map((x: any) => x.id === id ? item : x);
-        return n;
-      });
-    }
+    const { type, mode, initialForm } = modal; const id = initialForm.id; const p = { ...f };
+    if (type === "mitarbeiter") { p.qualifikationen = f.qualifikationen ? f.qualifikationen.split(",").map((s: string) => s.trim()).filter(Boolean) : []; p.fuehrerschein = f.fuehrerschein ? f.fuehrerschein.split(",").map((s: string) => s.trim()).filter(Boolean) : []; p.stundenlohn = parseFloat(f.stundenlohn) || 0; p.urlaubstage = parseInt(f.urlaubstage) || 0; p.urlaubGenommen = parseInt(f.urlaubGenommen) || 0; p.gutMit = pn(f.gutMit); p.nichtMit = pn(f.nichtMit); }
+    if (type === "baustellen") { p.anforderungen = f.anforderungen ? f.anforderungen.split(",").map((s: string) => s.trim()).filter(Boolean) : []; p.mitarbeiter = Array.isArray(p.mitarbeiter) ? p.mitarbeiter : []; p.fahrzeuge = Array.isArray(p.fahrzeuge) ? p.fahrzeuge : []; p.equipment = Array.isArray(p.equipment) ? p.equipment : []; p.aufgaben = Array.isArray(p.aufgaben) ? p.aufgaben : []; }
+    if (mode === "add") { const { data: neu } = await supabase.from(type).insert([p]).select(); if (neu) setData((d: any) => { const n = { ...d }; const item = type === "baustellen" ? fixBS(neu[0]) : neu[0]; n[type] = [...(d[type] || []), item]; return n; }); }
+    else { await supabase.from(type).update(p).eq("id", id); setData((d: any) => { const n = { ...d }; const item = type === "baustellen" ? fixBS({ ...p, id }) : { ...p, id }; n[type] = d[type].map((x: any) => x.id === id ? item : x); return n; }); }
     closeModal();
   };
-
-  const deleteItem = async (type: string, id: number) => {
-    await supabase.from(type).delete().eq("id", id);
-    setData((d: any) => { const n = { ...d }; n[type] = d[type].filter((x: any) => x.id !== id); return n; });
-  };
-
-  const simulateGPS = () => {
-    setGpsStatus("Aktualisiere...");
-    setTimeout(() => {
-      setData((d: any) => ({ ...d, fahrzeuge: d.fahrzeuge.map((f: any) => ({ ...f, lat: f.lat + (Math.random() - 0.5) * 0.008, lng: f.lng + (Math.random() - 0.5) * 0.008 })) }));
-      setGpsStatus("Aktualisiert " + new Date().toLocaleTimeString("de-DE"));
-    }, 800);
-  };
+  const deleteItem = async (type: string, id: number) => { await supabase.from(type).delete().eq("id", id); setData((d: any) => { const n = { ...d }; n[type] = d[type].filter((x: any) => x.id !== id); return n; }); };
+  const simulateGPS = () => { setGpsStatus("Aktualisiere..."); setTimeout(() => { setData((d: any) => ({ ...d, fahrzeuge: d.fahrzeuge.map((f: any) => ({ ...f, lat: f.lat + (Math.random() - 0.5) * 0.008, lng: f.lng + (Math.random() - 0.5) * 0.008 })) })); setGpsStatus("Aktualisiert " + new Date().toLocaleTimeString("de-DE")); }, 800); };
 
   const ActiveModule = MODULE_MAP[tab];
   const navLabel = (NAV.find(n => n.id === tab) || { label: "Dashboard" }).label;
   const SW = sidebarOpen ? 200 : 60;
-
-  const moduleProps = {
-    data, setData, setTab,
-    openAdd, openEdit, deleteItem,
-    saveTermin, deleteTermin,
-    callAI, simulateGPS, gpsStatus,
-    onAdd: openAdd, onEdit: openEdit, onDelete: deleteItem,
-    onDetail: setDetailMA,
-  };
+  const moduleProps = { data, setData, setTab, openAdd, openEdit, deleteItem, saveTermin, deleteTermin, callAI, simulateGPS, gpsStatus, onAdd: openAdd, onEdit: openEdit, onDelete: deleteItem, onDetail: setDetailMA };
 
   if (!appUnlocked) {
     return (
-      <div style={{ fontFamily: "system-ui,sans-serif", minHeight: "100vh", background: "#f0f4f3", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ fontFamily: "system-ui,sans-serif", height: "100vh", overflow: "hidden", background: "#f0f4f3", display: "flex", alignItems: "center", justifyContent: "center" }}>
         <div style={{ ...C.card, width: "min(360px,95vw)", textAlign: "center" }}>
           <div style={{ width: 52, height: 52, borderRadius: 12, background: ACCENT, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 700, color: "#fff", margin: "0 auto 16px" }}>BM</div>
           <div style={{ fontSize: 18, fontWeight: 700, color: "#222", marginBottom: 4 }}>BauManager</div>
           <div style={{ fontSize: 12, color: "#aaa", marginBottom: 24 }}>Bitte Zugangscode eingeben</div>
-          <input id="code-input" type="password" placeholder="Zugangscode"
-            style={{ ...C.inp, textAlign: "center", fontSize: 16, letterSpacing: 4, marginBottom: 12 }}
-            onKeyDown={e => { if (e.key === "Enter") { const v = (document.getElementById("code-input") as HTMLInputElement).value; if (v === APP_CODE) setAppUnlocked(true); } }}
-          />
-          <button style={{ ...C.btnP, width: "100%" }} onClick={() => { const v = (document.getElementById("code-input") as HTMLInputElement).value; if (v === APP_CODE) setAppUnlocked(true); }}>
-            Einloggen
-          </button>
+          <input id="code-input" type="password" placeholder="Zugangscode" style={{ ...C.inp, textAlign: "center", fontSize: 16, letterSpacing: 4, marginBottom: 12 }} onKeyDown={e => { if (e.key === "Enter") { const v = (document.getElementById("code-input") as HTMLInputElement).value; if (v === APP_CODE) setAppUnlocked(true); } }} />
+          <button style={{ ...C.btnP, width: "100%" }} onClick={() => { const v = (document.getElementById("code-input") as HTMLInputElement).value; if (v === APP_CODE) setAppUnlocked(true); }}>Einloggen</button>
         </div>
       </div>
     );
   }
 
   return (
-    // Gesamte App: 100vh, KEIN Scrollen
+    // ROOT: 100vh, overflow hidden – KEIN globales Scrollen
     <div style={{ fontFamily: "system-ui,sans-serif", height: "100vh", overflow: "hidden", background: "#f0f4f3", display: "flex" }}>
 
-      {/* Sidebar */}
+      {/* ── SIDEBAR ───────────────────────────────────────────────────────────── */}
       <div style={{ width: SW, minWidth: SW, background: ACCENT, height: "100vh", display: "flex", flexDirection: "column", padding: "16px 0", flexShrink: 0, transition: "width 0.25s ease, min-width 0.25s ease", overflow: "hidden" }}>
         <div style={{ padding: "0 10px 20px", display: "flex", alignItems: "center", justifyContent: sidebarOpen ? "space-between" : "center" }}>
           {sidebarOpen && (
@@ -252,22 +164,22 @@ export default function App() {
         </div>
       </div>
 
-      {/* Main: flex column, 100vh, KEIN Scrollen */}
+      {/* ── MAIN: flex column, 100vh, kein Overflow ───────────────────────────── */}
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
 
-        {/* Header: fix, schrumpft nicht */}
-        <div style={{ padding: "14px 20px 10px", flexShrink: 0, borderBottom: "1px solid #e8eaed", background: "#f0f4f3" }}>
+        {/* Header – fix, schrumpft nie */}
+        <div style={{ padding: "12px 20px 10px", flexShrink: 0, borderBottom: "1px solid #e8eaed", background: "#f0f4f3" }}>
           <div style={{ fontSize: 17, fontWeight: 700, color: "#222" }}>{navLabel}</div>
           <div style={{ fontSize: 11, color: "#bbb", marginTop: 1 }}>{new Date().toLocaleDateString("de-DE", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</div>
         </div>
 
-        {/* Content: nimmt restliche Höhe, KEIN Scrollen nach außen */}
-        <div style={{ flex: 1, overflow: "hidden", padding: 16 }}>
+        {/* Content – nimmt restliche Höhe, KEIN Overflow */}
+        <div style={{ flex: 1, minHeight: 0, overflow: "hidden", padding: 14 }}>
           {ActiveModule && <ActiveModule {...moduleProps} />}
         </div>
       </div>
 
-      {/* Overlays */}
+      {/* ── OVERLAYS ──────────────────────────────────────────────────────────── */}
       {showPin && <PinModal onSuccess={() => { setAuthed(true); setShowPin(false); }} onCancel={() => setShowPin(false)} />}
       {modal && <EditModal modalType={modal.type} modalMode={modal.mode} initialForm={modal.initialForm} onSave={saveItem} onClose={closeModal} />}
       {detailMA && (
