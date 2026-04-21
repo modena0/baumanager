@@ -34,7 +34,7 @@ export default function App() {
   const [gpsStatus, setGpsStatus] = useState("Bereit");
   const [showPin,   setShowPin]   = useState(false);
   const [authed,    setAuthed]    = useState(false);
-  const [appUnlocked, setAppUnlocked] = useState(true);
+  const [appUnlocked, setAppUnlocked] = useState(false);
 const APP_CODE = "bau2026";
   useEffect(() => {
   async function loadData() {
