@@ -22,17 +22,19 @@ const MODULE_MAP: Record<number, ComponentType<any>> = {
   4: KalenderTab, 5: LagerTab, 6: FuhrparkTab, 7: KITab,
 };
 
-const fixArr = (val: any): any[] => {
-  if (!val) return [];
-  if (Array.isArray(val)) return val;
-  return val.split(",").map((s: string) => s.trim()).filter(Boolean);
+// ── Hilfsfunktionen ────────────────────────────────────────────────────────────
+const toArr = (v: any): any[] => {
+  if (!v) return [];
+  if (Array.isArray(v)) return v;
+  return String(v).split(",").map((s: string) => s.trim()).filter(Boolean);
 };
+
 const fixBS = (b: any) => ({
   ...b,
-  anforderungen: fixArr(b.anforderungen),
-  mitarbeiter:   fixArr(b.mitarbeiter),
-  fahrzeuge:     fixArr(b.fahrzeuge),
-  equipment:     fixArr(b.equipment),
+  anforderungen: toArr(b.anforderungen),
+  mitarbeiter:   toArr(b.mitarbeiter),
+  fahrzeuge:     toArr(b.fahrzeuge),
+  equipment:     toArr(b.equipment),
   aufgaben:      Array.isArray(b.aufgaben) ? b.aufgaben : [],
 });
 
@@ -92,35 +94,73 @@ export default function App() {
   };
   const deleteTermin = async (id: number) => { await supabase.from("termine").delete().eq("id", id); setData((d: any) => ({ ...d, termine: d.termine.filter((t: any) => t.id !== id) })); };
 
-  const openAdd = (type: string) => { const init = type === "baustellen" ? { mitarbeiter: [], fahrzeuge: [], equipment: [], aufgaben: [] } : {}; setModal({ type, mode: "add", initialForm: init }); };
+  const openAdd = (type: string) => {
+    const init = type === "baustellen" ? { mitarbeiter: [], fahrzeuge: [], equipment: [], aufgaben: [] } : {};
+    setModal({ type, mode: "add", initialForm: init });
+  };
+
   const openEdit = (type: string, item: any) => {
     const f = { ...item };
     if (type === "mitarbeiter") {
-     const toArr = (v: any) => Array.isArray(v) ? v : (v ? String(v).split(",").map((s: string) => s.trim()).filter(Boolean) : []);
-f.qualifikationen = toArr(item.qualifikationen).join(", ");
-f.fuehrerschein   = toArr(item.fuehrerschein).join(", ");
-      f.gutMit = (item.gutMit || []).map((id: number) => { const m = data.mitarbeiter.find((x: any) => x.id === id); return m ? m.name : ""; }).join(", ");
-      f.nichtMit = (item.nichtMit || []).map((id: number) => { const m = data.mitarbeiter.find((x: any) => x.id === id); return m ? m.name : ""; }).join(", ");
+      // Sicherstellen dass alle Arrays wirklich Arrays sind
+      f.qualifikationen = toArr(item.qualifikationen).join(", ");
+      f.fuehrerschein   = toArr(item.fuehrerschein).join(", ");
+      f.gutMit   = toArr(item.gutMit).map((id: number) => { const m = data.mitarbeiter.find((x: any) => x.id === id); return m ? m.name : ""; }).filter(Boolean).join(", ");
+      f.nichtMit = toArr(item.nichtMit).map((id: number) => { const m = data.mitarbeiter.find((x: any) => x.id === id); return m ? m.name : ""; }).filter(Boolean).join(", ");
     }
-    if (type === "baustellen") f.anforderungen = (item.anforderungen || []).join(", ");
+    if (type === "baustellen") f.anforderungen = toArr(item.anforderungen).join(", ");
     setModal({ type, mode: "edit", initialForm: f });
   };
+
   const closeModal = () => setModal(null);
-  const pn = (str: string) => (str || "").split(",").map((s: string) => s.trim()).filter(Boolean).map((n: string) => { const m = data.mitarbeiter.find((x: any) => x.name.toLowerCase().includes(n.toLowerCase())); return m ? m.id : null; }).filter(Boolean);
+
+  const pn = (str: string) =>
+    (str || "").split(",").map((s: string) => s.trim()).filter(Boolean)
+      .map((n: string) => { const m = data.mitarbeiter.find((x: any) => x.name.toLowerCase().includes(n.toLowerCase())); return m ? m.id : null; })
+      .filter(Boolean);
 
   const saveItem = async (f: any) => {
     const { type, mode, initialForm } = modal; const id = initialForm.id; const p = { ...f };
-    if (type === "mitarbeiter") { p.qualifikationen = f.qualifikationen ? f.qualifikationen.split(",").map((s: string) => s.trim()).filter(Boolean) : []; p.fuehrerschein = f.fuehrerschein ? f.fuehrerschein.split(",").map((s: string) => s.trim()).filter(Boolean) : []; p.stundenlohn = parseFloat(f.stundenlohn) || 0; p.urlaubstage = parseInt(f.urlaubstage) || 0; p.urlaubGenommen = parseInt(f.urlaubGenommen) || 0; p.gutMit = pn(f.gutMit); p.nichtMit = pn(f.nichtMit); }
-    if (type === "baustellen") { p.anforderungen = f.anforderungen ? f.anforderungen.split(",").map((s: string) => s.trim()).filter(Boolean) : []; p.mitarbeiter = Array.isArray(p.mitarbeiter) ? p.mitarbeiter : []; p.fahrzeuge = Array.isArray(p.fahrzeuge) ? p.fahrzeuge : []; p.equipment = Array.isArray(p.equipment) ? p.equipment : []; p.aufgaben = Array.isArray(p.aufgaben) ? p.aufgaben : []; }
-    if (mode === "add") { const { data: neu } = await supabase.from(type).insert([p]).select(); if (neu) setData((d: any) => { const n = { ...d }; const item = type === "baustellen" ? fixBS(neu[0]) : neu[0]; n[type] = [...(d[type] || []), item]; return n; }); }
-    else { await supabase.from(type).update(p).eq("id", id); setData((d: any) => { const n = { ...d }; const item = type === "baustellen" ? fixBS({ ...p, id }) : { ...p, id }; n[type] = d[type].map((x: any) => x.id === id ? item : x); return n; }); }
+    if (type === "mitarbeiter") {
+      p.qualifikationen = f.qualifikationen ? f.qualifikationen.split(",").map((s: string) => s.trim()).filter(Boolean) : [];
+      p.fuehrerschein   = f.fuehrerschein   ? f.fuehrerschein.split(",").map((s: string) => s.trim()).filter(Boolean) : [];
+      p.stundenlohn     = parseFloat(f.stundenlohn) || 0;
+      p.urlaubstage     = parseInt(f.urlaubstage)   || 0;
+      p.urlaubGenommen  = parseInt(f.urlaubGenommen) || 0;
+      p.gutMit   = pn(f.gutMit);
+      p.nichtMit = pn(f.nichtMit);
+    }
+    if (type === "baustellen") {
+      p.anforderungen = f.anforderungen ? f.anforderungen.split(",").map((s: string) => s.trim()).filter(Boolean) : [];
+      p.mitarbeiter   = Array.isArray(p.mitarbeiter) ? p.mitarbeiter : [];
+      p.fahrzeuge     = Array.isArray(p.fahrzeuge)   ? p.fahrzeuge   : [];
+      p.equipment     = Array.isArray(p.equipment)   ? p.equipment   : [];
+      p.aufgaben      = Array.isArray(p.aufgaben)    ? p.aufgaben    : [];
+    }
+    if (mode === "add") {
+      const { data: neu } = await supabase.from(type).insert([p]).select();
+      if (neu) setData((d: any) => { const n = { ...d }; const item = type === "baustellen" ? fixBS(neu[0]) : neu[0]; n[type] = [...(d[type] || []), item]; return n; });
+    } else {
+      await supabase.from(type).update(p).eq("id", id);
+      setData((d: any) => { const n = { ...d }; const item = type === "baustellen" ? fixBS({ ...p, id }) : { ...p, id }; n[type] = d[type].map((x: any) => x.id === id ? item : x); return n; });
+    }
     closeModal();
   };
 
-  const deleteItem = async (type: string, id: number) => { await supabase.from(type).delete().eq("id", id); setData((d: any) => { const n = { ...d }; n[type] = d[type].filter((x: any) => x.id !== id); return n; }); };
-  const simulateGPS = () => { setGpsStatus("Aktualisiere..."); setTimeout(() => { setData((d: any) => ({ ...d, fahrzeuge: d.fahrzeuge.map((f: any) => ({ ...f, lat: f.lat + (Math.random() - 0.5) * 0.008, lng: f.lng + (Math.random() - 0.5) * 0.008 })) })); setGpsStatus("Aktualisiert " + new Date().toLocaleTimeString("de-DE")); }, 800); };
+  const deleteItem = async (type: string, id: number) => {
+    await supabase.from(type).delete().eq("id", id);
+    setData((d: any) => { const n = { ...d }; n[type] = d[type].filter((x: any) => x.id !== id); return n; });
+  };
 
-  // Ladescreen
+  const simulateGPS = () => {
+    setGpsStatus("Aktualisiere...");
+    setTimeout(() => {
+      setData((d: any) => ({ ...d, fahrzeuge: d.fahrzeuge.map((f: any) => ({ ...f, lat: f.lat + (Math.random() - 0.5) * 0.008, lng: f.lng + (Math.random() - 0.5) * 0.008 })) }));
+      setGpsStatus("Aktualisiert " + new Date().toLocaleTimeString("de-DE"));
+    }, 800);
+  };
+
+  // ── Ladescreen ────────────────────────────────────────────────────────────────
   if (!dataLoaded) {
     return (
       <div style={{ fontFamily: "system-ui,sans-serif", height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f0f4f3" }}>
@@ -132,11 +172,12 @@ f.fuehrerschein   = toArr(item.fuehrerschein).join(", ");
     );
   }
 
-  // Login Screen
+  // ── Login Screen ──────────────────────────────────────────────────────────────
   if (!currentUser) {
     return <LoginScreen mitarbeiter={data.mitarbeiter} onLogin={(user: any) => setCurrentUser(user)} />;
   }
 
+  // ── Hauptapp ──────────────────────────────────────────────────────────────────
   const ActiveModule = MODULE_MAP[tab];
   const navLabel = (NAV.find(n => n.id === tab) || { label: "Dashboard" }).label;
 
@@ -158,10 +199,13 @@ f.fuehrerschein   = toArr(item.fuehrerschein).join(", ");
   return (
     <div style={{ fontFamily: "system-ui,sans-serif", height: "100vh", overflow: "hidden", background: "#f0f4f3", display: "flex" }}>
 
-      {/* SIDEBAR */}
-      <div onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
+      {/* ── SIDEBAR ───────────────────────────────────────────────────────────── */}
+      <div
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
         style={{ width: hovered ? 200 : 64, minWidth: hovered ? 200 : 64, background: ACCENT, height: "100vh", display: "flex", flexDirection: "column", padding: "16px 0", flexShrink: 0, transition: "width 0.3s ease, min-width 0.3s ease", overflow: "hidden", zIndex: 10, boxShadow: hovered ? "4px 0 20px rgba(0,0,0,0.15)" : "none" }}
       >
+        {/* Logo + User */}
         <div style={{ padding: "0 12px 20px", display: "flex", alignItems: "center", gap: 10, overflow: "hidden" }}>
           <div style={{ width: 36, height: 36, borderRadius: 8, background: "rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#fff", flexShrink: 0 }}>BM</div>
           <div style={{ opacity: hovered ? 1 : 0, transition: "opacity 0.2s ease", whiteSpace: "nowrap" }}>
@@ -170,6 +214,7 @@ f.fuehrerschein   = toArr(item.fuehrerschein).join(", ");
           </div>
         </div>
 
+        {/* Nav */}
         <div style={{ flex: 1 }}>
           {NAV.filter(item => erlaubteTabs.includes(item.id)).map(item => {
             const active = tab === item.id;
@@ -186,6 +231,7 @@ f.fuehrerschein   = toArr(item.fuehrerschein).join(", ");
           })}
         </div>
 
+        {/* Abmelden */}
         <div style={{ padding: "12px" }}>
           <button onClick={() => setCurrentUser(null)} title={!hovered ? "Abmelden" : ""}
             style={{ width: "100%", padding: "7px 10px", borderRadius: 8, background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", cursor: "pointer", fontSize: 11, display: "flex", alignItems: "center", gap: 10, overflow: "hidden", whiteSpace: "nowrap" }}
@@ -196,7 +242,7 @@ f.fuehrerschein   = toArr(item.fuehrerschein).join(", ");
         </div>
       </div>
 
-      {/* MAIN */}
+      {/* ── MAIN ──────────────────────────────────────────────────────────────── */}
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
         <div style={{ padding: "12px 20px 10px", flexShrink: 0, borderBottom: "1px solid #e8eaed", background: "#f0f4f3", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
@@ -212,9 +258,10 @@ f.fuehrerschein   = toArr(item.fuehrerschein).join(", ");
         </div>
       </div>
 
-      {/* OVERLAYS */}
+      {/* ── OVERLAYS ──────────────────────────────────────────────────────────── */}
       {showPin && <PinModal onSuccess={() => setShowPin(false)} onCancel={() => setShowPin(false)} />}
       {modal && <EditModal modalType={modal.type} modalMode={modal.mode} initialForm={modal.initialForm} onSave={saveItem} onClose={closeModal} />}
+
       {detailMA && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }} onClick={e => { if (e.target === e.currentTarget) setDetailMA(null); }}>
           <div style={{ ...C.card, width: "min(500px,95vw)", maxHeight: "90vh", overflowY: "auto" }}>
@@ -233,8 +280,14 @@ f.fuehrerschein   = toArr(item.fuehrerschein).join(", ");
               if (!val) return null;
               return <div key={label} style={{ display: "flex", gap: 12, padding: "7px 0", borderBottom: "1px solid #f5f5f5" }}><span style={{ fontSize: 12, color: "#bbb", minWidth: 110 }}>{label}</span><span style={{ fontSize: 13, color: "#333" }}>{val}</span></div>;
             })}
-            <div style={{ padding: "10px 0 4px" }}><div style={{ fontSize: 12, color: "#bbb", marginBottom: 6 }}>Qualifikationen</div>{(detailMA.qualifikationen || []).map((q: string) => <span key={q} style={C.tag}>{q}</span>)}</div>
-            <div style={{ padding: "4px 0" }}><div style={{ fontSize: 12, color: "#bbb", marginBottom: 6 }}>Führerschein</div>{(detailMA.fuehrerschein || []).map((f: string) => <span key={f} style={{ display: "inline-block", padding: "2px 8px", borderRadius: 10, fontSize: 11, background: "#e8f5f3", color: ACCENT, marginRight: 4, marginBottom: 2 }}>{f}</span>)}</div>
+            <div style={{ padding: "10px 0 4px" }}>
+              <div style={{ fontSize: 12, color: "#bbb", marginBottom: 6 }}>Qualifikationen</div>
+              {toArr(detailMA.qualifikationen).map((q: string) => <span key={q} style={C.tag}>{q}</span>)}
+            </div>
+            <div style={{ padding: "4px 0" }}>
+              <div style={{ fontSize: 12, color: "#bbb", marginBottom: 6 }}>Führerschein</div>
+              {toArr(detailMA.fuehrerschein).map((f: string) => <span key={f} style={{ display: "inline-block", padding: "2px 8px", borderRadius: 10, fontSize: 11, background: "#e8f5f3", color: ACCENT, marginRight: 4, marginBottom: 2 }}>{f}</span>)}
+            </div>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
               <button style={C.btnS} onClick={() => setDetailMA(null)}>Schließen</button>
               {KANN.mitarbeiterEdit(rolle) && <button style={C.btnP} onClick={() => { openEdit("mitarbeiter", detailMA); setDetailMA(null); }}>Bearbeiten</button>}
