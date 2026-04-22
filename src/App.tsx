@@ -96,7 +96,9 @@ export default function App() {
   const openEdit = (type: string, item: any) => {
     const f = { ...item };
     if (type === "mitarbeiter") {
-      f.qualifikationen = (item.qualifikationen || []).join(", "); f.fuehrerschein = (item.fuehrerschein || []).join(", ");
+     const toArr = (v: any) => Array.isArray(v) ? v : (v ? String(v).split(",").map((s: string) => s.trim()).filter(Boolean) : []);
+f.qualifikationen = toArr(item.qualifikationen).join(", ");
+f.fuehrerschein   = toArr(item.fuehrerschein).join(", ");
       f.gutMit = (item.gutMit || []).map((id: number) => { const m = data.mitarbeiter.find((x: any) => x.id === id); return m ? m.name : ""; }).join(", ");
       f.nichtMit = (item.nichtMit || []).map((id: number) => { const m = data.mitarbeiter.find((x: any) => x.id === id); return m ? m.name : ""; }).join(", ");
     }
