@@ -16,13 +16,13 @@ import { LagerTab }        from "./modules/LagerTab";
 import { KITab }           from "./modules/KITab";
 import { ROLLE_TABS, KANN } from "./rollen";
 import type { Rolle } from "./rollen";
+import { useMobile } from "./useMobile";
 
 const MODULE_MAP: Record<number, ComponentType<any>> = {
   0: Dashboard, 1: MitarbeiterTab, 2: ZuordnungsBoard, 3: BaustellenTab,
   4: KalenderTab, 5: LagerTab, 6: FuhrparkTab, 7: KITab,
 };
 
-// ── Hilfsfunktionen ────────────────────────────────────────────────────────────
 const toArr = (v: any): any[] => {
   if (!v) return [];
   if (Array.isArray(v)) return v;
@@ -49,6 +49,8 @@ export default function App() {
   const [selectedBS,  setSelectedBS]  = useState<number|null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [dataLoaded,  setDataLoaded]  = useState(false);
+
+  const isMobile = useMobile();
 
   useEffect(() => {
     async function loadData() {
@@ -164,7 +166,7 @@ export default function App() {
     return (
       <div style={{ fontFamily: "system-ui,sans-serif", height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f0f4f3" }}>
         <div style={{ textAlign: "center" }}>
-          <div style={{ width: 48, height: 48, borderRadius: 12, background: ACCENT, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 700, color: "#fff", margin: "0 auto 16px" }}>BM</div>
+          <div style={{ width: 56, height: 56, borderRadius: 16, background: ACCENT, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 700, color: "#fff", margin: "0 auto 16px" }}>BM</div>
           <div style={{ fontSize: 13, color: "#bbb" }}>Lädt...</div>
         </div>
       </div>
@@ -176,10 +178,9 @@ export default function App() {
     return <LoginScreen mitarbeiter={data.mitarbeiter} onLogin={(user: any) => setCurrentUser(user)} />;
   }
 
-  // ── Hauptapp ──────────────────────────────────────────────────────────────────
   const ActiveModule = MODULE_MAP[tab];
   const navLabel = (NAV.find(n => n.id === tab) || { label: "Dashboard" }).label;
-  const isDashboard = tab === 0; // Dashboard ist fix, alle anderen scrollen
+  const isDashboard = tab === 0;
 
   const moduleProps = {
     data, setData, setTab,
@@ -194,18 +195,66 @@ export default function App() {
     kannLohnSehen:         KANN.lohnSehen(rolle),
     kannMitarbeiterEdit:   KANN.mitarbeiterEdit(rolle),
     kannBaustellenAnlegen: KANN.baustellenAnlegen(rolle),
+    isMobile,
   };
 
+  // ── MOBILE LAYOUT ─────────────────────────────────────────────────────────────
+  if (isMobile) {
+    const mobileNav = NAV.filter(item => erlaubteTabs.includes(item.id)).slice(0, 5);
+    return (
+      <div style={{ fontFamily: "system-ui,sans-serif", height: "100vh", overflow: "hidden", background: "#f0f4f3", display: "flex", flexDirection: "column" }}>
+
+        {/* Mobile Header */}
+        <div style={{ background: ACCENT, padding: "12px 16px 10px", flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: "max(12px, env(safe-area-inset-top))" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "#fff" }}>BM</div>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>{navLabel}</div>
+              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.7)" }}>{currentUser.name} · {currentUser.rolle_system}</div>
+            </div>
+          </div>
+          <button onClick={() => setCurrentUser(null)} style={{ background: "rgba(255,255,255,0.15)", border: "none", borderRadius: 8, padding: "6px 10px", color: "#fff", cursor: "pointer", fontSize: 12 }}>
+            🚪
+          </button>
+        </div>
+
+        {/* Mobile Content */}
+        <div style={{ flex: 1, minHeight: 0, overflow: isDashboard ? "hidden" : "auto", padding: 12 }}>
+          {ActiveModule && <ActiveModule {...moduleProps} />}
+        </div>
+
+        {/* Mobile Bottom Navigation */}
+        <div style={{ background: "#fff", borderTop: "1px solid #eee", display: "flex", flexShrink: 0, paddingBottom: "max(8px, env(safe-area-inset-bottom))" }}>
+          {mobileNav.map(item => {
+            const active = tab === item.id;
+            return (
+              <button key={item.id} onClick={() => setTab(item.id)}
+                style={{ flex: 1, padding: "8px 4px", border: "none", background: "transparent", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, position: "relative" }}
+              >
+                <span style={{ fontSize: 20 }}>{item.icon}</span>
+                <span style={{ fontSize: 9, color: active ? ACCENT : "#999", fontWeight: active ? 700 : 400 }}>{item.label}</span>
+                {active && <div style={{ position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)", width: 24, height: 3, background: ACCENT, borderRadius: 2 }} />}
+                {item.label === "Kalender" && pflichtCount > 0 && (
+                  <span style={{ position: "absolute", top: 4, right: "calc(50% - 14px)", background: "#E24B4A", color: "#fff", borderRadius: "50%", fontSize: 9, width: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{pflichtCount}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // ── DESKTOP LAYOUT ────────────────────────────────────────────────────────────
   return (
     <div style={{ fontFamily: "system-ui,sans-serif", height: "100vh", overflow: "hidden", background: "#f0f4f3", display: "flex" }}>
 
-      {/* ── SIDEBAR ───────────────────────────────────────────────────────────── */}
+      {/* Sidebar */}
       <div
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         style={{ width: hovered ? 200 : 64, minWidth: hovered ? 200 : 64, background: ACCENT, height: "100vh", display: "flex", flexDirection: "column", padding: "16px 0", flexShrink: 0, transition: "width 0.3s ease, min-width 0.3s ease", overflow: "hidden", zIndex: 10, boxShadow: hovered ? "4px 0 20px rgba(0,0,0,0.15)" : "none" }}
       >
-        {/* Logo + User */}
         <div style={{ padding: "0 12px 20px", display: "flex", alignItems: "center", gap: 10, overflow: "hidden" }}>
           <div style={{ width: 36, height: 36, borderRadius: 8, background: "rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#fff", flexShrink: 0 }}>BM</div>
           <div style={{ opacity: hovered ? 1 : 0, transition: "opacity 0.2s ease", whiteSpace: "nowrap" }}>
@@ -214,7 +263,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* Nav */}
         <div style={{ flex: 1 }}>
           {NAV.filter(item => erlaubteTabs.includes(item.id)).map(item => {
             const active = tab === item.id;
@@ -231,7 +279,6 @@ export default function App() {
           })}
         </div>
 
-        {/* Abmelden */}
         <div style={{ padding: "12px" }}>
           <button onClick={() => setCurrentUser(null)} title={!hovered ? "Abmelden" : ""}
             style={{ width: "100%", padding: "7px 10px", borderRadius: 8, background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", cursor: "pointer", fontSize: 11, display: "flex", alignItems: "center", gap: 10, overflow: "hidden", whiteSpace: "nowrap" }}
@@ -242,10 +289,8 @@ export default function App() {
         </div>
       </div>
 
-      {/* ── MAIN ──────────────────────────────────────────────────────────────── */}
+      {/* Main */}
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
-
-        {/* Header */}
         <div style={{ padding: "12px 20px 10px", flexShrink: 0, borderBottom: "1px solid #e8eaed", background: "#f0f4f3", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
             <div style={{ fontSize: 17, fontWeight: 700, color: "#222" }}>{navLabel}</div>
@@ -255,21 +300,12 @@ export default function App() {
             {currentUser.name} · {currentUser.rolle_system}
           </div>
         </div>
-
-        {/* Content:
-            - Dashboard (tab 0): overflow hidden, kein Scrollen
-            - Alle anderen Tabs: overflow auto, scrollbar */}
-        <div style={{
-          flex: 1,
-          minHeight: 0,
-          overflow: isDashboard ? "hidden" : "auto",
-          padding: 14,
-        }}>
+        <div style={{ flex: 1, minHeight: 0, overflow: isDashboard ? "hidden" : "auto", padding: 14 }}>
           {ActiveModule && <ActiveModule {...moduleProps} />}
         </div>
       </div>
 
-      {/* ── OVERLAYS ──────────────────────────────────────────────────────────── */}
+      {/* Overlays */}
       {showPin && <PinModal onSuccess={() => setShowPin(false)} onCancel={() => setShowPin(false)} />}
       {modal && <EditModal modalType={modal.type} modalMode={modal.mode} initialForm={modal.initialForm} onSave={saveItem} onClose={closeModal} />}
 
