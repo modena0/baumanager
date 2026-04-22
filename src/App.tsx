@@ -102,7 +102,6 @@ export default function App() {
   const openEdit = (type: string, item: any) => {
     const f = { ...item };
     if (type === "mitarbeiter") {
-      // Sicherstellen dass alle Arrays wirklich Arrays sind
       f.qualifikationen = toArr(item.qualifikationen).join(", ");
       f.fuehrerschein   = toArr(item.fuehrerschein).join(", ");
       f.gutMit   = toArr(item.gutMit).map((id: number) => { const m = data.mitarbeiter.find((x: any) => x.id === id); return m ? m.name : ""; }).filter(Boolean).join(", ");
@@ -180,6 +179,7 @@ export default function App() {
   // ── Hauptapp ──────────────────────────────────────────────────────────────────
   const ActiveModule = MODULE_MAP[tab];
   const navLabel = (NAV.find(n => n.id === tab) || { label: "Dashboard" }).label;
+  const isDashboard = tab === 0; // Dashboard ist fix, alle anderen scrollen
 
   const moduleProps = {
     data, setData, setTab,
@@ -244,6 +244,8 @@ export default function App() {
 
       {/* ── MAIN ──────────────────────────────────────────────────────────────── */}
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
+
+        {/* Header */}
         <div style={{ padding: "12px 20px 10px", flexShrink: 0, borderBottom: "1px solid #e8eaed", background: "#f0f4f3", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
             <div style={{ fontSize: 17, fontWeight: 700, color: "#222" }}>{navLabel}</div>
@@ -253,7 +255,16 @@ export default function App() {
             {currentUser.name} · {currentUser.rolle_system}
           </div>
         </div>
-        <div style={{ flex: 1, minHeight: 0, overflow: "hidden", padding: 14 }}>
+
+        {/* Content:
+            - Dashboard (tab 0): overflow hidden, kein Scrollen
+            - Alle anderen Tabs: overflow auto, scrollbar */}
+        <div style={{
+          flex: 1,
+          minHeight: 0,
+          overflow: isDashboard ? "hidden" : "auto",
+          padding: 14,
+        }}>
           {ActiveModule && <ActiveModule {...moduleProps} />}
         </div>
       </div>
