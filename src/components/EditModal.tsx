@@ -28,6 +28,7 @@ export function EditModal({ modalType, modalMode, initialForm, onSave, onClose }
   const formRef = useRef<HTMLFormElement>(null);
   const modalKey = modalType + "|" + modalMode + "|" + (initialForm.id || "new");
   const d = initialForm;
+  const isMobile = window.innerWidth < 768;
 
   function handleSave() {
     const fd = new FormData(formRef.current!);
@@ -37,8 +38,35 @@ export function EditModal({ modalType, modalMode, initialForm, onSave, onClose }
   }
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{ ...C.card, width: "min(640px,95vw)", maxHeight: "90vh", overflowY: "auto", border: "1px solid #eee" }}>
+    <div
+      style={{
+        position: "fixed", inset: 0,
+        background: "rgba(0,0,0,0.4)",
+        display: "flex",
+        alignItems: isMobile ? "flex-end" : "center",
+        justifyContent: "center",
+        zIndex: 9999,
+      }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div style={{
+        ...C.card,
+        width: isMobile ? "100%" : "min(640px,95vw)",
+        maxWidth: 640,
+        maxHeight: isMobile ? "92vh" : "90vh",
+        overflowY: "auto",
+        border: "1px solid #eee",
+        borderRadius: isMobile ? "20px 20px 0 0" : 16,
+        margin: 0,
+        padding: isMobile ? "20px 16px 32px" : 24,
+        WebkitOverflowScrolling: "touch",
+      } as any}>
+
+        {/* Handle für Mobile */}
+        {isMobile && (
+          <div style={{ width: 40, height: 4, background: "#ddd", borderRadius: 2, margin: "0 auto 16px" }} />
+        )}
+
         <div style={{ fontWeight: 700, fontSize: 17, marginBottom: 16, paddingBottom: 12, borderBottom: "1px solid #f5f5f5", color: "#222" }}>
           {modalMode === "add" ? "Neu anlegen" : "Bearbeiten"}
           <span style={{ color: ACCENT, fontWeight: 500, fontSize: 14 }}> – {modalType}</span>
@@ -77,17 +105,10 @@ export function EditModal({ modalType, modalMode, initialForm, onSave, onClose }
               <div style={{ marginTop: 12, padding: "12px 14px", background: "#f8f8ff", borderRadius: 10, border: "1px solid #e8eaed" }}>
                 <div style={{ fontSize: 12, fontWeight: 600, color: "#555", marginBottom: 8 }}>🔐 System-Zugang</div>
                 <div style={C.r2}>
-                  <USel
-                    label="System-Rolle"
-                    name="rolle_system"
-                    defaultValue={d.rolle_system}
-                    opts={Object.keys(ROLLEN_LABEL)}
-                  />
+                  <USel label="System-Rolle" name="rolle_system" defaultValue={d.rolle_system} opts={Object.keys(ROLLEN_LABEL)} />
                   <UField label="PIN (4-stellig)" name="pin" type="password" defaultValue={d.pin} />
                 </div>
-                <div style={{ fontSize: 11, color: "#aaa", marginTop: 4 }}>
-                  Nur ausfüllen wenn die Person Zugang zur App haben soll.
-                </div>
+                <div style={{ fontSize: 11, color: "#aaa", marginTop: 4 }}>Nur ausfüllen wenn die Person Zugang zur App haben soll.</div>
               </div>
             </div>
           )}
@@ -140,9 +161,10 @@ export function EditModal({ modalType, modalMode, initialForm, onSave, onClose }
           )}
         </form>
 
+        {/* Buttons */}
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 20 }}>
-          <button style={C.btnS} onClick={onClose}>Abbrechen</button>
-          <button style={C.btnP} onClick={handleSave}>Speichern</button>
+          <button style={{ ...C.btnS, flex: isMobile ? 1 : "none", padding: isMobile ? "12px" : undefined }} onClick={onClose}>Abbrechen</button>
+          <button style={{ ...C.btnP, flex: isMobile ? 1 : "none", padding: isMobile ? "12px" : undefined }} onClick={handleSave}>Speichern</button>
         </div>
       </div>
     </div>

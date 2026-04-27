@@ -209,7 +209,7 @@ export default function App() {
       <div style={{ fontFamily: "system-ui,sans-serif", height: "100vh", overflow: "hidden", background: "#f0f4f3", display: "flex", flexDirection: "column" }}>
 
         {/* Mobile Header */}
-        <div style={{ background: ACCENT, padding: "12px 16px 10px", flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: "max(12px, env(safe-area-inset-top))" }}>
+        <div style={{ background: ACCENT, padding: "12px 16px 10px", flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "#fff" }}>BM</div>
             <div>
@@ -222,24 +222,22 @@ export default function App() {
           </button>
         </div>
 
-        {/* Mobile Content – IMMER scrollbar */}
-        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 12, WebkitOverflowScrolling: "touch" } as any}>
+        {/* Mobile Content – immer scrollbar */}
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 12 }}>
           {ActiveModule && <ActiveModule {...moduleProps} />}
         </div>
 
         {/* Mobile Bottom Navigation */}
-        <div style={{ background: "#fff", borderTop: "1px solid #eee", display: "flex", flexShrink: 0, paddingBottom: "max(8px, env(safe-area-inset-bottom))" }}>
+        <div style={{ background: "#fff", borderTop: "1px solid #eee", display: "flex", flexShrink: 0, paddingBottom: 8 }}>
           {mobileNav.map(item => {
             const active = tab === item.id;
             return (
               <button key={item.id} onClick={() => setTab(item.id)}
                 style={{ flex: 1, padding: "8px 4px 6px", border: "none", background: "transparent", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, position: "relative" }}
               >
-                {/* Aktiver Indikator oben */}
                 {active && <div style={{ position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)", width: 28, height: 3, background: ACCENT, borderRadius: "0 0 3px 3px" }} />}
                 <span style={{ fontSize: 22 }}>{item.icon}</span>
                 <span style={{ fontSize: 9, color: active ? ACCENT : "#aaa", fontWeight: active ? 700 : 400 }}>{item.label}</span>
-                {/* Badge */}
                 {item.label === "Kalender" && pflichtCount > 0 && (
                   <span style={{ position: "absolute", top: 4, right: "calc(50% - 16px)", background: "#E24B4A", color: "#fff", borderRadius: "50%", fontSize: 9, width: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{pflichtCount}</span>
                 )}
@@ -247,6 +245,36 @@ export default function App() {
             );
           })}
         </div>
+
+        {/* Overlays – zIndex sehr hoch damit sie über allem liegen */}
+        {modal && <EditModal modalType={modal.type} modalMode={modal.mode} initialForm={modal.initialForm} onSave={saveItem} onClose={closeModal} />}
+        {showPin && <PinModal onSuccess={() => setShowPin(false)} onCancel={() => setShowPin(false)} />}
+
+        {detailMA && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 9999 }} onClick={e => { if (e.target === e.currentTarget) setDetailMA(null); }}>
+            <div style={{ ...C.card, width: "100%", maxHeight: "90vh", overflowY: "auto", borderRadius: "20px 20px 0 0", padding: "20px 16px 32px" }}>
+              <div style={{ width: 40, height: 4, background: "#ddd", borderRadius: 2, margin: "0 auto 16px" }} />
+              <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16, paddingBottom: 14, borderBottom: "1px solid #f5f5f5" }}>
+                <div style={{ width: 48, height: 48, borderRadius: "50%", background: "#e8f5f3", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 700, color: ACCENT }}>{detailMA.name.split(" ").map((n: string) => n[0]).join("")}</div>
+                <div><div style={{ fontWeight: 700, fontSize: 16, color: "#222" }}>{detailMA.name}</div><div style={{ fontSize: 12, color: "#aaa" }}>{detailMA.rolle}</div></div>
+              </div>
+              {([
+                ["Telefon", detailMA.telefon], ["Adresse", detailMA.adresse], ["Geburtsdatum", detailMA.geburtsdatum],
+                ["Notfallkontakt", detailMA.notfallkontakt], ["Eintrittsdatum", detailMA.eintrittsdatum], ["Vertragsart", detailMA.vertragsart],
+                ...(KANN.lohnSehen(rolle) ? [["Stundenlohn", detailMA.stundenlohn + " €/h"]] : []),
+                ["Urlaub", (detailMA.urlaubGenommen || 0) + " / " + (detailMA.urlaubstage || 0) + " Tage"],
+                ["Baustelle", detailMA.baustelle], ["Zertifikate", detailMA.zertifikate],
+              ] as [string, any][]).map(([label, val]) => {
+                if (!val) return null;
+                return <div key={label} style={{ display: "flex", gap: 12, padding: "7px 0", borderBottom: "1px solid #f5f5f5" }}><span style={{ fontSize: 11, color: "#bbb", minWidth: 100 }}>{label}</span><span style={{ fontSize: 12, color: "#333" }}>{val}</span></div>;
+              })}
+              <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+                <button style={{ ...C.btnS, flex: 1, padding: "12px" }} onClick={() => setDetailMA(null)}>Schließen</button>
+                {KANN.mitarbeiterEdit(rolle) && <button style={{ ...C.btnP, flex: 1, padding: "12px" }} onClick={() => { openEdit("mitarbeiter", detailMA); setDetailMA(null); }}>Bearbeiten</button>}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -256,9 +284,7 @@ export default function App() {
     <div style={{ fontFamily: "system-ui,sans-serif", height: "100vh", overflow: "hidden", background: "#f0f4f3", display: "flex" }}>
 
       {/* Sidebar */}
-      <div
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
+      <div onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
         style={{ width: hovered ? 200 : 64, minWidth: hovered ? 200 : 64, background: ACCENT, height: "100vh", display: "flex", flexDirection: "column", padding: "16px 0", flexShrink: 0, transition: "width 0.3s ease, min-width 0.3s ease", overflow: "hidden", zIndex: 10, boxShadow: hovered ? "4px 0 20px rgba(0,0,0,0.15)" : "none" }}
       >
         <div style={{ padding: "0 12px 20px", display: "flex", alignItems: "center", gap: 10, overflow: "hidden" }}>
@@ -268,7 +294,6 @@ export default function App() {
             <div style={{ fontSize: 9, color: "rgba(255,255,255,0.7)" }}>{currentUser.rolle_system}</div>
           </div>
         </div>
-
         <div style={{ flex: 1 }}>
           {NAV.filter(item => erlaubteTabs.includes(item.id)).map(item => {
             const active = tab === item.id;
@@ -284,7 +309,6 @@ export default function App() {
             );
           })}
         </div>
-
         <div style={{ padding: "12px" }}>
           <button onClick={() => setCurrentUser(null)} title={!hovered ? "Abmelden" : ""}
             style={{ width: "100%", padding: "7px 10px", borderRadius: 8, background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", cursor: "pointer", fontSize: 11, display: "flex", alignItems: "center", gap: 10, overflow: "hidden", whiteSpace: "nowrap" }}
@@ -306,19 +330,17 @@ export default function App() {
             {currentUser.name} · {currentUser.rolle_system}
           </div>
         </div>
-
-        {/* Desktop: Dashboard fix, alle anderen scrollbar */}
         <div style={{ flex: 1, minHeight: 0, overflow: isDashboard ? "hidden" : "auto", padding: 14 }}>
           {ActiveModule && <ActiveModule {...moduleProps} />}
         </div>
       </div>
 
-      {/* Overlays */}
+      {/* Desktop Overlays */}
       {showPin && <PinModal onSuccess={() => setShowPin(false)} onCancel={() => setShowPin(false)} />}
       {modal && <EditModal modalType={modal.type} modalMode={modal.mode} initialForm={modal.initialForm} onSave={saveItem} onClose={closeModal} />}
 
       {detailMA && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }} onClick={e => { if (e.target === e.currentTarget) setDetailMA(null); }}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }} onClick={e => { if (e.target === e.currentTarget) setDetailMA(null); }}>
           <div style={{ ...C.card, width: "min(500px,95vw)", maxHeight: "90vh", overflowY: "auto" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16, paddingBottom: 14, borderBottom: "1px solid #f5f5f5" }}>
               <div style={{ width: 52, height: 52, borderRadius: "50%", background: "#e8f5f3", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 700, color: ACCENT }}>{detailMA.name.split(" ").map((n: string) => n[0]).join("")}</div>
