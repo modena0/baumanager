@@ -3,7 +3,7 @@ import { C, ACCENT } from "../lib/constants";
 import { getProgress } from "../lib/utils";
 import { Kalender } from "../components/Kalender";
 
-export function Dashboard({ data, setTab, saveTermin, deleteTermin, setSelectedBS }: any) {
+export function Dashboard({ data, setTab, saveTermin, deleteTermin, setSelectedBS, isMobile }: any) {
   const [aiRes, setAiRes]   = useState("");
   const [aiLoad, setAiLoad] = useState(false);
   const [frage, setFrage]   = useState("");
@@ -37,19 +37,135 @@ export function Dashboard({ data, setTab, saveTermin, deleteTermin, setSelectedB
       .then(r => r.json()).then(d => setAiRes((d.content && d.content[0] && d.content[0].text) || "Keine Antwort.")).catch(e => setAiRes("Fehler: " + e.message)).finally(() => setAiLoad(false));
   };
 
+  // ── MOBILE LAYOUT: alles untereinander ───────────────────────────────────────
+  if (isMobile) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+
+        {/* Heute – wenn Termine vorhanden */}
+        {heuteTermine.length > 0 && (
+          <div style={{ ...C.card, padding: "12px 14px" }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#222", marginBottom: 8 }}>📅 Heute</div>
+            {heuteTermine.map((t: any) => (
+              <div key={t.id} style={{ display: "flex", gap: 8, padding: "5px 0", borderBottom: "1px solid #f5f5f5", alignItems: "center" }}>
+                <div style={{ width: 3, minHeight: 24, borderRadius: 2, background: t.art === "Pflichttermin" ? "#E24B4A" : ACCENT, flexShrink: 0 }} />
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "#222" }}>{t.titel}</div>
+                  <div style={{ fontSize: 10, color: "#aaa" }}>{t.uhrzeit} – {t.art}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* 1. Aktive Baustellen */}
+        <div style={{ ...C.card, padding: "12px 14px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "#222" }}>Aktive Baustellen</span>
+            <button onClick={() => setTab(3)} style={{ fontSize: 11, color: ACCENT, background: "none", border: "none", cursor: "pointer", fontWeight: 500 }}>Alle →</button>
+          </div>
+          {sorted.length === 0 && <div style={{ fontSize: 12, color: "#bbb", textAlign: "center", padding: 8 }}>Keine aktiven Baustellen</div>}
+          {sorted.map((b: any, idx: number) => {
+            const col = bsColors[idx % bsColors.length];
+            const prog = getProgress(b);
+            const auf = b.aufgaben || [];
+            const done = auf.filter((a: any) => a.erledigt).length;
+            const dl = getDL(b.ende);
+            return (
+              <div key={b.id}
+                onClick={() => { setSelectedBS(b.id); setTab(3); }}
+                style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: "1px solid #f5f5f5", cursor: "pointer" }}
+              >
+                <div style={{ width: 4, height: 40, borderRadius: 2, background: col, flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "#222", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{b.name}</div>
+                  <div style={{ fontSize: 10, color: "#888", marginBottom: 4 }}>{b.ort}</div>
+                  <div style={{ height: 4, background: "#eee", borderRadius: 2 }}>
+                    <div style={{ height: "100%", width: prog + "%", background: col, borderRadius: 2 }} />
+                  </div>
+                  {auf.length > 0 && <div style={{ fontSize: 9, color: "#bbb", marginTop: 3 }}>{done}/{auf.length} Aufgaben ✓</div>}
+                </div>
+                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: ACCENT }}>{prog}%</div>
+                  {dl !== null && <div style={{ fontSize: 10, color: dl <= 14 ? "#E24B4A" : "#bbb" }}>{dl}d</div>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* 2. Kalender */}
+        <div style={{ ...C.card, padding: "12px 14px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "#222" }}>Kalender</span>
+            <button onClick={() => setTab(4)} style={{ fontSize: 11, color: ACCENT, background: "none", border: "none", cursor: "pointer", fontWeight: 500 }}>Vollansicht</button>
+          </div>
+          <Kalender termine={data.termine || []} onSave={saveTermin} onDelete={deleteTermin} compact={true} baustellen={data.baustellen} />
+        </div>
+
+        {/* 3. Baustellen-Übersicht Map */}
+        <div style={{ ...C.card, padding: "12px 14px" }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#222", marginBottom: 8 }}>Baustellen-Übersicht</div>
+          <div style={{ borderRadius: 10, overflow: "hidden", border: "1px solid #eee" }}>
+            <svg viewBox="0 0 540 200" width="100%" style={{ display: "block", background: "#e8f5f3" }}>
+              <path d="M0,140 Q140,120 270,150 Q390,180 540,160" fill="none" stroke="#b2dfdb" strokeWidth={12} />
+              <path d="M270,0 Q278,80 270,150 Q262,190 278,200" fill="none" stroke="#b2dfdb" strokeWidth={8} />
+              <text x={230} y={195} fontSize={10} fill={ACCENT} textAnchor="middle" fontWeight={600}>Dresden</text>
+              <text x={65} y={185} fontSize={10} fill={ACCENT} textAnchor="middle" fontWeight={600}>Leipzig</text>
+              {data.baustellen.map((b: any, idx: number) => {
+                const pins = [{ x: 310, y: 85 }, { x: 235, y: 132 }, { x: 75, y: 160 }];
+                const p = pins[idx] || { x: 160 + idx * 60, y: 120 };
+                const prog = getProgress(b);
+                return (
+                  <g key={b.id} style={{ cursor: "pointer" }} onClick={() => { setSelectedBS(b.id); setTab(3); }}>
+                    <circle cx={p.x} cy={p.y} r={10} fill="#fff" stroke={ACCENT} strokeWidth={2} />
+                    <circle cx={p.x} cy={p.y} r={6} fill={ACCENT} />
+                    <rect x={p.x - 28} y={p.y + 13} width={56} height={20} rx={5} fill="#fff" stroke={ACCENT} strokeWidth={1} />
+                    <text x={p.x} y={p.y + 22} textAnchor="middle" fontSize={7} fill={ACCENT} fontWeight={700}>{b.name}</text>
+                    <text x={p.x} y={p.y + 30} textAnchor="middle" fontSize={7} fill="#888">{prog}%</text>
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
+        </div>
+
+        {/* 4. KI Hilfe */}
+        <div style={{ ...C.card, padding: "12px 14px" }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#222", marginBottom: 8 }}>✦ KI Hilfe</div>
+          <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+            {[["Auslastung", "Kurze Zusammenfassung der aktuellen Auslastung."], ["Engpässe", "Kritische Engpaesse?"], ["Heute", "Was sollte ich heute zuerst tun?"]].map(q => (
+              <button key={q[0]} onClick={() => ask(q[1])} style={{ padding: "6px 14px", borderRadius: 16, background: "#f0faf9", border: "1px solid " + ACCENT + "44", color: ACCENT, cursor: "pointer", fontSize: 12, fontWeight: 500 }}>{q[0]}</button>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+            <input style={{ ...C.inp, marginBottom: 0, flex: 1, fontSize: 13, padding: "10px 12px" }} value={frage} onChange={e => setFrage(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && frage) ask(frage); }} placeholder="Frage stellen..." />
+            <button onClick={() => { if (frage) ask(frage); }} style={{ padding: "10px 16px", borderRadius: 10, border: "none", background: ACCENT, cursor: "pointer", fontSize: 14, color: "#fff", fontWeight: 600, flexShrink: 0 }}>→</button>
+          </div>
+          {(aiLoad || aiRes) && (
+            <div style={{ background: "#f8fffe", borderRadius: 8, padding: "10px 12px", fontSize: 12, lineHeight: 1.6, color: aiLoad ? "#bbb" : "#444", whiteSpace: "pre-wrap", border: "1px solid #e8f5f3" }}>
+              {aiLoad ? "KI analysiert..." : aiRes}
+            </div>
+          )}
+        </div>
+
+      </div>
+    );
+  }
+
+  // ── DESKTOP LAYOUT ────────────────────────────────────────────────────────────
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 300px", gap: 12, height: "100%", overflow: "hidden" }}>
 
-      {/* ── LINKE SPALTE ─────────────────────────────────────────────────────── */}
+      {/* Linke Spalte */}
       <div style={{ display: "flex", flexDirection: "column", gap: 12, height: "100%", overflow: "hidden" }}>
 
-        {/* Aktive Baustellen – nur Liste scrollt */}
+        {/* Aktive Baustellen */}
         <div style={{ ...C.card, display: "flex", flexDirection: "column", flex: "0 0 auto", maxHeight: "55%" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexShrink: 0 }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: "#222" }}>Aktive Baustellen</span>
             <button onClick={() => setTab(3)} style={{ fontSize: 11, color: ACCENT, background: "none", border: "none", cursor: "pointer", fontWeight: 500 }}>Alle anzeigen →</button>
           </div>
-
           <div style={{ overflowY: "auto", flex: 1, minHeight: 0 }}>
             {sorted.map((b: any, idx: number) => {
               const col = bsColors[idx % bsColors.length];
@@ -57,31 +173,11 @@ export function Dashboard({ data, setTab, saveTermin, deleteTermin, setSelectedB
               const auf = b.aufgaben || [];
               const done = auf.filter((a: any) => a.erledigt).length;
               const dl = getDL(b.ende);
-
               return (
-                <div
-                  key={b.id}
-                  onClick={() => {
-                    setSelectedBS(b.id); // ← setzt die ausgewählte Baustelle
-                    setTab(3);           // ← navigiert zu Baustellen-Tab
-                  }}
-                  style={{
-                    background: col + "28",
-                    borderRadius: 8,
-                    padding: "6px 10px",
-                    marginBottom: 5,
-                    border: "1.5px solid " + col,
-                    cursor: "pointer",
-                    transition: "transform 0.12s, box-shadow 0.12s",
-                  }}
-                  onMouseEnter={e => {
-                    (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)";
-                    (e.currentTarget as HTMLElement).style.boxShadow = "0 3px 10px rgba(0,0,0,0.08)";
-                  }}
-                  onMouseLeave={e => {
-                    (e.currentTarget as HTMLElement).style.transform = "";
-                    (e.currentTarget as HTMLElement).style.boxShadow = "";
-                  }}
+                <div key={b.id} onClick={() => { setSelectedBS(b.id); setTab(3); }}
+                  style={{ background: col + "28", borderRadius: 8, padding: "6px 10px", marginBottom: 5, border: "1.5px solid " + col, cursor: "pointer", transition: "transform 0.12s" }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)"; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ""; }}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
                     <div>
@@ -109,7 +205,7 @@ export function Dashboard({ data, setTab, saveTermin, deleteTermin, setSelectedB
           </div>
         </div>
 
-        {/* Baustellen-Übersicht Map – fix */}
+        {/* Baustellen-Übersicht Map */}
         <div style={{ ...C.card, flex: 1, minHeight: 0, overflow: "hidden" }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: "#222", marginBottom: 8 }}>Baustellen-Übersicht</div>
           <div style={{ borderRadius: 10, overflow: "hidden", border: "1px solid #eee", height: "calc(100% - 30px)" }}>
@@ -138,7 +234,7 @@ export function Dashboard({ data, setTab, saveTermin, deleteTermin, setSelectedB
         </div>
       </div>
 
-      {/* ── RECHTE SPALTE ────────────────────────────────────────────────────── */}
+      {/* Rechte Spalte */}
       <div style={{ display: "flex", flexDirection: "column", gap: 12, height: "100%", overflow: "hidden" }}>
 
         {/* Kalender */}
