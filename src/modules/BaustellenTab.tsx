@@ -9,28 +9,30 @@ export function BaustellenTab({ data, setData, openAdd, openEdit, deleteItem, se
   const [expId, setExpId] = useState<number|null>(selectedBS || null);
 
   // ── Mitarbeiter zuweisen ────────────────────────────────────────────────────
-  const assignMA = (bsId: number, maId: number) => {
-    setData((d: any) => {
-      const nb = d.baustellen.map((b: any) => {
-        if (b.id !== bsId) return b;
-        const t = b.mitarbeiter.includes(maId)
-          ? b.mitarbeiter.filter((i: number) => i !== maId)
-          : [...b.mitarbeiter, maId];
-        supabase.from("baustellen").update({ mitarbeiter: t }).eq("id", bsId);
-        return { ...b, mitarbeiter: t };
-      });
-      const nm = nb.find((b: any) => b.id === bsId).name;
-      const was = d.baustellen.find((b: any) => b.id === bsId).mitarbeiter.includes(maId);
-      return {
-        ...d,
-        baustellen: nb,
-        mitarbeiter: d.mitarbeiter.map((m: any) =>
-          m.id !== maId ? m : { ...m, baustelle: was ? "-" : nm }
-        ),
-      };
+const assignMA = (bsId: number, maId: number) => {
+  setData((d: any) => {
+    const bs = d.baustellen.find((b: any) => b.id === bsId);
+    const was = bs.mitarbeiter.includes(maId);
+    const nb = d.baustellen.map((b: any) => {
+      if (b.id !== bsId) return b;
+      const t = was
+        ? b.mitarbeiter.filter((i: number) => i !== maId)
+        : [...b.mitarbeiter, maId];
+      supabase.from("baustellen").update({ mitarbeiter: t }).eq("id", bsId);
+      return { ...b, mitarbeiter: t };
     });
-  };
-
+    const nm = nb.find((b: any) => b.id === bsId).name;
+    // Mitarbeiter.baustelle auch in Supabase speichern!
+    supabase.from("mitarbeiter").update({ baustelle: was ? "-" : nm }).eq("id", maId);
+    return {
+      ...d,
+      baustellen: nb,
+      mitarbeiter: d.mitarbeiter.map((m: any) =>
+        m.id !== maId ? m : { ...m, baustelle: was ? "-" : nm }
+      ),
+    };
+  });
+};
   // ── Fahrzeug zuweisen ───────────────────────────────────────────────────────
   const assignFZ = (bsId: number, fzId: number) => {
     setData((d: any) => {
