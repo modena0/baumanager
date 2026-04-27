@@ -106,7 +106,7 @@ export function EditModal({ modalType, modalMode, initialForm, onSave, onClose }
                 <div style={{ fontSize: 12, fontWeight: 600, color: "#555", marginBottom: 8 }}>🔐 System-Zugang</div>
                 <div style={C.r2}>
                   <USel label="System-Rolle" name="rolle_system" defaultValue={d.rolle_system} opts={Object.keys(ROLLEN_LABEL)} />
-                  <UField label="PIN (4-stellig)" name="pin" type="password" defaultValue={d.pin} />
+                 <UField label="Passwort (min. 10 Zeichen)" name="pin" type="password" defaultValue={d.pin} />
                 </div>
                 <div style={{ fontSize: 11, color: "#aaa", marginTop: 4 }}>Nur ausfüllen wenn die Person Zugang zur App haben soll.</div>
               </div>

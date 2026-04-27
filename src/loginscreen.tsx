@@ -40,10 +40,10 @@ export function LoginScreen({ mitarbeiter, onLogin }: LoginScreenProps) {
     if (!name.trim()) { setFehler("Bitte Namen eingeben."); return; }
     if (!passwort) { setFehler("Bitte Passwort eingeben."); return; }
 
-    // Suche Mitarbeiter nach Name (case-insensitive)
-    const user = loginUser.find((m: any) =>
-      m.name.toLowerCase() === name.trim().toLowerCase()
-    );
+   const user = loginUser.find((m: any) =>
+  m.name.toLowerCase() === name.trim().toLowerCase() ||
+  m.name.toLowerCase().includes(name.trim().toLowerCase())
+);
 
     if (!user) { setFehler("Name nicht gefunden."); return; }
     if (passwort !== user.pin) { setFehler("Falsches Passwort."); setPasswort(""); return; }
