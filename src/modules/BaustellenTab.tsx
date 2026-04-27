@@ -9,82 +9,101 @@ export function BaustellenTab({ data, setData, openAdd, openEdit, deleteItem, se
   const [expId, setExpId] = useState<number|null>(selectedBS || null);
 
   // ── Mitarbeiter zuweisen ────────────────────────────────────────────────────
-const assignMA = (bsId: number, maId: number) => {
-  setData((d: any) => {
-    const bs = d.baustellen.find((b: any) => b.id === bsId);
+  const assignMA = async (bsId: number, maId: number) => {
+    const bs  = data.baustellen.find((b: any) => b.id === bsId);
     const was = bs.mitarbeiter.includes(maId);
-    const nb = d.baustellen.map((b: any) => {
-      if (b.id !== bsId) return b;
-      const t = was
-        ? b.mitarbeiter.filter((i: number) => i !== maId)
-        : [...b.mitarbeiter, maId];
-      supabase.from("baustellen").update({ mitarbeiter: t }).eq("id", bsId);
-      return { ...b, mitarbeiter: t };
-    });
-    const nm = nb.find((b: any) => b.id === bsId).name;
-    // Mitarbeiter.baustelle auch in Supabase speichern!
-    supabase.from("mitarbeiter").update({ baustelle: was ? "-" : nm }).eq("id", maId);
-    return {
+    const nm  = bs.name;
+
+    // Neue Mitarbeiter-Liste für die Baustelle
+    const neuListe = was
+      ? bs.mitarbeiter.filter((i: number) => i !== maId)
+      : [...bs.mitarbeiter, maId];
+
+    // 1. Baustellen-Mitarbeiter in Supabase speichern
+    await supabase.from("baustellen").update({ mitarbeiter: neuListe }).eq("id", bsId);
+
+    // 2. Mitarbeiter.baustelle in Supabase speichern
+    await supabase.from("mitarbeiter").update({ baustelle: was ? "" : nm }).eq("id", maId);
+
+    // 3. Lokalen State aktualisieren
+    setData((d: any) => ({
       ...d,
-      baustellen: nb,
-      mitarbeiter: d.mitarbeiter.map((m: any) =>
-        m.id !== maId ? m : { ...m, baustelle: was ? "-" : nm }
+      baustellen: d.baustellen.map((b: any) =>
+        b.id !== bsId ? b : { ...b, mitarbeiter: neuListe }
       ),
-    };
-  });
-};
+      mitarbeiter: d.mitarbeiter.map((m: any) =>
+        m.id !== maId ? m : { ...m, baustelle: was ? "" : nm }
+      ),
+    }));
+  };
+
   // ── Fahrzeug zuweisen ───────────────────────────────────────────────────────
-  const assignFZ = (bsId: number, fzId: number) => {
-    setData((d: any) => {
-      const nb = d.baustellen.map((b: any) => {
-        if (b.id !== bsId) return b;
-        const fz = b.fahrzeuge || [];
-        const up = fz.includes(fzId) ? fz.filter((i: number) => i !== fzId) : [...fz, fzId];
-        supabase.from("baustellen").update({ fahrzeuge: up }).eq("id", bsId);
-        return { ...b, fahrzeuge: up };
-      });
-      const nm = nb.find((b: any) => b.id === bsId).name;
-      const was = (d.baustellen.find((b: any) => b.id === bsId).fahrzeuge || []).includes(fzId);
-      return {
-        ...d,
-        baustellen: nb,
-        fahrzeuge: d.fahrzeuge.map((f: any) =>
-          f.id !== fzId ? f : { ...f, baustelle: was ? "-" : nm, status: was ? "verfügbar" : "im Einsatz" }
-        ),
-      };
-    });
+  const assignFZ = async (bsId: number, fzId: number) => {
+    const bs  = data.baustellen.find((b: any) => b.id === bsId);
+    const fz  = bs.fahrzeuge || [];
+    const was = fz.includes(fzId);
+    const nm  = bs.name;
+
+    const neuListe = was
+      ? fz.filter((i: number) => i !== fzId)
+      : [...fz, fzId];
+
+    // 1. Baustellen-Fahrzeuge in Supabase speichern
+    await supabase.from("baustellen").update({ fahrzeuge: neuListe }).eq("id", bsId);
+
+    // 2. Fahrzeug-Status in Supabase speichern
+    await supabase.from("fahrzeuge").update({
+      baustelle: was ? "" : nm,
+      status: was ? "verfügbar" : "im Einsatz"
+    }).eq("id", fzId);
+
+    // 3. Lokalen State aktualisieren
+    setData((d: any) => ({
+      ...d,
+      baustellen: d.baustellen.map((b: any) =>
+        b.id !== bsId ? b : { ...b, fahrzeuge: neuListe }
+      ),
+      fahrzeuge: d.fahrzeuge.map((f: any) =>
+        f.id !== fzId ? f : { ...f, baustelle: was ? "" : nm, status: was ? "verfügbar" : "im Einsatz" }
+      ),
+    }));
   };
 
   // ── Equipment zuweisen + Lagerbestand aktualisieren ────────────────────────
-  const assignEQ = (bsId: number, lgId: number) => {
-    setData((d: any) => {
-      // Prüfen ob Equipment bereits zugewiesen ist
-      const was = (d.baustellen.find((b: any) => b.id === bsId)?.equipment || []).includes(lgId);
+  const assignEQ = async (bsId: number, lgId: number) => {
+    const bs  = data.baustellen.find((b: any) => b.id === bsId);
+    const eq  = bs.equipment || [];
+    const was = eq.includes(lgId);
 
-      // Baustellen-Equipment aktualisieren
-      const nb = d.baustellen.map((b: any) => {
-        if (b.id !== bsId) return b;
-        const eq = b.equipment || [];
-        const up = was ? eq.filter((i: number) => i !== lgId) : [...eq, lgId];
-        supabase.from("baustellen").update({ equipment: up }).eq("id", bsId);
-        return { ...b, equipment: up };
-      });
+    const neuListe = was
+      ? eq.filter((i: number) => i !== lgId)
+      : [...eq, lgId];
 
-      // Lagerbestand aktualisieren
-      const nl = d.lager.map((l: any) => {
-        if (l.id !== lgId) return l;
-        const neuVerfuegbar = was
-          ? Math.min(l.anzahl, (l.verfuegbar || 0) + 1)  // freigeben → +1
-          : Math.max(0, (l.verfuegbar || 0) - 1);         // belegen   → -1
-        supabase.from("lager").update({ verfuegbar: neuVerfuegbar }).eq("id", lgId);
-        return { ...l, verfuegbar: neuVerfuegbar };
-      });
+    // Lagerbestand berechnen
+    const lager = data.lager.find((l: any) => l.id === lgId);
+    const neuVerfuegbar = was
+      ? Math.min(lager.anzahl, (lager.verfuegbar || 0) + 1)
+      : Math.max(0, (lager.verfuegbar || 0) - 1);
 
-      return { ...d, baustellen: nb, lager: nl };
-    });
+    // 1. Baustellen-Equipment in Supabase speichern
+    await supabase.from("baustellen").update({ equipment: neuListe }).eq("id", bsId);
+
+    // 2. Lagerbestand in Supabase speichern
+    await supabase.from("lager").update({ verfuegbar: neuVerfuegbar }).eq("id", lgId);
+
+    // 3. Lokalen State aktualisieren
+    setData((d: any) => ({
+      ...d,
+      baustellen: d.baustellen.map((b: any) =>
+        b.id !== bsId ? b : { ...b, equipment: neuListe }
+      ),
+      lager: d.lager.map((l: any) =>
+        l.id !== lgId ? l : { ...l, verfuegbar: neuVerfuegbar }
+      ),
+    }));
   };
 
-  // ── Baustellen filtern (Einzelansicht wenn selectedBS gesetzt) ──────────────
+  // ── Baustellen filtern ──────────────────────────────────────────────────────
   const anzeigeBS = selectedBS
     ? data.baustellen.filter((b: any) => b.id === selectedBS)
     : data.baustellen;
@@ -100,7 +119,7 @@ const assignMA = (bsId: number, maId: number) => {
 
   return (
     <div>
-      {/* ── Header ──────────────────────────────────────────────────────────── */}
+      {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
         <div>
           {selectedBS && (
@@ -115,7 +134,7 @@ const assignMA = (bsId: number, maId: number) => {
         <button style={C.btnP} onClick={() => openAdd("baustellen")}>+ Neue Baustelle</button>
       </div>
 
-      {/* ── Baustellen Gruppen ───────────────────────────────────────────────── */}
+      {/* Baustellen Gruppen */}
       {bsGruppen.map(g => (
         <div key={g.key} style={{ ...C.card, marginBottom: 16 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
@@ -125,17 +144,14 @@ const assignMA = (bsId: number, maId: number) => {
 
           {g.members.map((b: any) => {
             const isExp = expId === b.id;
-            const prog = getProgress(b);
-            const aMA = b.mitarbeiter.map((id: number) => data.mitarbeiter.find((m: any) => m.id === id)).filter(Boolean);
-            const aFZ = (b.fahrzeuge || []).map((id: number) => data.fahrzeuge.find((f: any) => f.id === id)).filter(Boolean);
-            const aEQ = (b.equipment || []).map((id: number) => data.lager.find((l: any) => l.id === id)).filter(Boolean);
-            const avMA = data.mitarbeiter.filter((m: any) => !b.mitarbeiter.includes(m.id));
-            const avFZ = data.fahrzeuge.filter((f: any) => !(b.fahrzeuge || []).includes(f.id));
-            // Nur Equipment anzeigen das noch verfügbar ist (verfuegbar > 0) oder bereits zugewiesen
-            const avEQ = data.lager.filter((l: any) =>
-              !(b.equipment || []).includes(l.id) && (l.verfuegbar || 0) > 0
-            );
-            const dl = b.ende ? Math.ceil((new Date(b.ende).getTime() - Date.now()) / 86400000) : null;
+            const prog  = getProgress(b);
+            const aMA   = b.mitarbeiter.map((id: number) => data.mitarbeiter.find((m: any) => m.id === id)).filter(Boolean);
+            const aFZ   = (b.fahrzeuge || []).map((id: number) => data.fahrzeuge.find((f: any) => f.id === id)).filter(Boolean);
+            const aEQ   = (b.equipment || []).map((id: number) => data.lager.find((l: any) => l.id === id)).filter(Boolean);
+            const avMA  = data.mitarbeiter.filter((m: any) => !b.mitarbeiter.includes(m.id));
+            const avFZ  = data.fahrzeuge.filter((f: any) => !(b.fahrzeuge || []).includes(f.id));
+            const avEQ  = data.lager.filter((l: any) => !(b.equipment || []).includes(l.id) && (l.verfuegbar || 0) > 0);
+            const dl    = b.ende ? Math.ceil((new Date(b.ende).getTime() - Date.now()) / 86400000) : null;
 
             return (
               <div key={b.id} style={{ background: "#f8fffe", borderRadius: 12, border: "1px solid #e8f5f3", marginBottom: 10, overflow: "hidden" }}>
@@ -179,7 +195,7 @@ const assignMA = (bsId: number, maId: number) => {
                   </div>
                 </div>
 
-                {/* Aufgaben + Zuweisung (ausgeklappt) */}
+                {/* Aufgaben + Zuweisung */}
                 {isExp && (
                   <div>
                     <AufgabenPanel baustelle={b} setData={setData} />
