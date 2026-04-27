@@ -12,13 +12,15 @@ function UField({ label, defaultValue, name, type }: any) {
   );
 }
 
-function USel({ label, defaultValue, name, opts }: any) {
+function USel({ label, defaultValue, name, opts, optLabels }: any) {
   return (
     <div>
       <label style={C.lbl}>{label}</label>
       <select style={C.inp} name={name} defaultValue={defaultValue ?? ""}>
         <option value="">-- wählen --</option>
-        {opts.map((o: string) => <option key={o} value={o}>{o}</option>)}
+        {opts.map((o: string, i: number) => (
+          <option key={o} value={o}>{optLabels ? optLabels[i] : o}</option>
+        ))}
       </select>
     </div>
   );
@@ -105,7 +107,7 @@ export function EditModal({ modalType, modalMode, initialForm, onSave, onClose }
               <div style={{ marginTop: 12, padding: "12px 14px", background: "#f8f8ff", borderRadius: 10, border: "1px solid #e8eaed" }}>
                 <div style={{ fontSize: 12, fontWeight: 600, color: "#555", marginBottom: 8 }}>🔐 System-Zugang</div>
                 <div style={C.r2}>
-                  <USel label="System-Rolle" name="rolle_system" defaultValue={d.rolle_system} opts={Object.keys(ROLLEN_LABEL)} />
+                  <USel label="System-Rolle" name="rolle_system" defaultValue={d.rolle_system} opts={Object.keys(ROLLEN_LABEL)} optLabels={Object.values(ROLLEN_LABEL)} />
                  <UField label="Passwort (min. 10 Zeichen)" name="pin" type="password" defaultValue={d.pin} />
                 </div>
                 <div style={{ fontSize: 11, color: "#aaa", marginTop: 4 }}>Nur ausfüllen wenn die Person Zugang zur App haben soll.</div>
