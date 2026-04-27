@@ -67,7 +67,6 @@ export function AufgabenPanel({ baustelle: b, setData }: any) {
     updBS(x => { const l = x.aufgaben || []; const nid = Math.max(0, ...l.map((a: any) => a.id)) + 1; return { ...x, aufgaben: [...l, { id: nid, titel: neu.trim(), erledigt: false }] }; });
     setNeu("");
   }
-  // ... Rest bleibt gleich (return JSX)
 
   return (
     <div style={{ borderTop:"1px solid #e8f5f3", padding:"14px 16px", background:"#f8fffe" }}>
