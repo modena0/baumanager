@@ -16,7 +16,6 @@ import { LagerTab }        from "./modules/LagerTab";
 import { KITab }           from "./modules/KITab";
 import { ROLLE_TABS, KANN } from "./rollen";
 import type { Rolle } from "./rollen";
-import { useMobile } from "./useMobile";
 
 const MODULE_MAP: Record<number, ComponentType<any>> = {
   0: Dashboard, 1: MitarbeiterTab, 2: ZuordnungsBoard, 3: BaustellenTab,
@@ -49,8 +48,13 @@ export default function App() {
   const [selectedBS,  setSelectedBS]  = useState<number|null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [dataLoaded,  setDataLoaded]  = useState(false);
+  const [isMobile,    setIsMobile]    = useState(window.innerWidth < 768);
 
-  const isMobile = useMobile();
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, []);
 
   useEffect(() => {
     async function loadData() {
@@ -213,13 +217,13 @@ export default function App() {
               <div style={{ fontSize: 10, color: "rgba(255,255,255,0.7)" }}>{currentUser.name} · {currentUser.rolle_system}</div>
             </div>
           </div>
-          <button onClick={() => setCurrentUser(null)} style={{ background: "rgba(255,255,255,0.15)", border: "none", borderRadius: 8, padding: "6px 10px", color: "#fff", cursor: "pointer", fontSize: 12 }}>
+          <button onClick={() => setCurrentUser(null)} style={{ background: "rgba(255,255,255,0.15)", border: "none", borderRadius: 8, padding: "6px 10px", color: "#fff", cursor: "pointer", fontSize: 14 }}>
             🚪
           </button>
         </div>
 
-        {/* Mobile Content */}
-        <div style={{ flex: 1, minHeight: 0, overflow: isDashboard ? "hidden" : "auto", padding: 12 }}>
+        {/* Mobile Content – IMMER scrollbar */}
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 12, WebkitOverflowScrolling: "touch" } as any}>
           {ActiveModule && <ActiveModule {...moduleProps} />}
         </div>
 
@@ -229,13 +233,15 @@ export default function App() {
             const active = tab === item.id;
             return (
               <button key={item.id} onClick={() => setTab(item.id)}
-                style={{ flex: 1, padding: "8px 4px", border: "none", background: "transparent", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, position: "relative" }}
+                style={{ flex: 1, padding: "8px 4px 6px", border: "none", background: "transparent", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, position: "relative" }}
               >
-                <span style={{ fontSize: 20 }}>{item.icon}</span>
-                <span style={{ fontSize: 9, color: active ? ACCENT : "#999", fontWeight: active ? 700 : 400 }}>{item.label}</span>
-                {active && <div style={{ position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)", width: 24, height: 3, background: ACCENT, borderRadius: 2 }} />}
+                {/* Aktiver Indikator oben */}
+                {active && <div style={{ position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)", width: 28, height: 3, background: ACCENT, borderRadius: "0 0 3px 3px" }} />}
+                <span style={{ fontSize: 22 }}>{item.icon}</span>
+                <span style={{ fontSize: 9, color: active ? ACCENT : "#aaa", fontWeight: active ? 700 : 400 }}>{item.label}</span>
+                {/* Badge */}
                 {item.label === "Kalender" && pflichtCount > 0 && (
-                  <span style={{ position: "absolute", top: 4, right: "calc(50% - 14px)", background: "#E24B4A", color: "#fff", borderRadius: "50%", fontSize: 9, width: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{pflichtCount}</span>
+                  <span style={{ position: "absolute", top: 4, right: "calc(50% - 16px)", background: "#E24B4A", color: "#fff", borderRadius: "50%", fontSize: 9, width: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{pflichtCount}</span>
                 )}
               </button>
             );
@@ -300,6 +306,8 @@ export default function App() {
             {currentUser.name} · {currentUser.rolle_system}
           </div>
         </div>
+
+        {/* Desktop: Dashboard fix, alle anderen scrollbar */}
         <div style={{ flex: 1, minHeight: 0, overflow: isDashboard ? "hidden" : "auto", padding: 14 }}>
           {ActiveModule && <ActiveModule {...moduleProps} />}
         </div>
