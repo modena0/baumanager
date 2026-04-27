@@ -4,7 +4,7 @@ export const ROLLEN_LABEL: Record<Rolle, string> = {
   admin:              "Admin",
   chef:               "Chef",
   polier:             "Polier",
-  baustellen_leitung: "Baustellen-Leitung",
+ baustellen_leitung: "Bauleitung",
 };
 
 export const ROLLE_TABS: Record<Rolle, number[]> = {
