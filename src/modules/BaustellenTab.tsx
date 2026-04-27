@@ -6,8 +6,7 @@ import { AufgabenPanel } from "../components/Kalender";
 
 const toNumArr = (arr: any[]): number[] => arr.map((i: any) => Number(i)).filter((i: number) => !isNaN(i));
 
-export function BaustellenTab({ data, setData, openAdd, openEdit, deleteItem, selectedBS, setSelectedBS, rolle, kannBaustellenAnlegen }: any) {
-
+export function BaustellenTab({ data, setData, openAdd, openEdit, deleteItem, selectedBS, setSelectedBS, rolle, kannBaustellenAnlegen, currentUser }: any) {
   const [expId, setExpId] = useState<number|null>(selectedBS || null);
   const isBauleitung = rolle === "baustellen_leitung";
 
@@ -69,7 +68,11 @@ export function BaustellenTab({ data, setData, openAdd, openEdit, deleteItem, se
   };
 
   // ── Baustellen filtern ──────────────────────────────────────────────────────
-  const anzeigeBS = selectedBS
+const anzeigeBS = isBauleitung
+  ? data.baustellen.filter((b: any) =>
+      toNumArr(b.mitarbeiter || []).includes(currentUser.id)
+    )
+  : selectedBS
     ? data.baustellen.filter((b: any) => b.id === selectedBS)
     : data.baustellen;
 
