@@ -204,7 +204,7 @@ export default function App() {
 
   // ── MOBILE LAYOUT ─────────────────────────────────────────────────────────────
   if (isMobile) {
-    const mobileNav = NAV.filter(item => erlaubteTabs.includes(item.id)).slice(0, 5);
+   const mobileNav = NAV.filter(item => erlaubteTabs.includes(item.id));
     return (
       <div style={{ fontFamily: "system-ui,sans-serif", height: "100vh", overflow: "hidden", background: "#f0f4f3", display: "flex", flexDirection: "column" }}>
 
@@ -228,7 +228,7 @@ export default function App() {
         </div>
 
         {/* Mobile Bottom Navigation */}
-        <div style={{ background: "#fff", borderTop: "1px solid #eee", display: "flex", flexShrink: 0, paddingBottom: 8 }}>
+       <div style={{ background: "#fff", borderTop: "1px solid #eee", display: "flex", flexShrink: 0, paddingBottom: 8, overflowX: "auto" }}>
           {mobileNav.map(item => {
             const active = tab === item.id;
             return (
