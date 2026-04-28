@@ -3,14 +3,13 @@ export const ACCENT = "#4DB6AC";
 
 export const NAV = [
   { id: 0, label: "Dashboard",   icon: "⊞" },
-  { id: 4, label: "Kalender",    icon: "▦" },
-  { id: 1, label: "Mitarbeiter", icon: "👤" },
+  { id: 8, label: "Teamplanung", icon: "👷" },
   { id: 3, label: "Baustellen",  icon: "⛏" },
+  { id: 4, label: "Kalender",    icon: "▦" },
   { id: 6, label: "Fuhrpark",    icon: "🚛" },
   { id: 5, label: "Lager",       icon: "📦" },
-  { id: 2, label: "Zuordnung",   icon: "⇄" },
   { id: 7, label: "KI",          icon: "✦" },
-  { id: 8, label: "Teamplanung", icon: "👷" },
+  { id: 1, label: "Mitarbeiter", icon: "👤" },
 ];
 
 export const BS_KAT  = ["Tiefbau", "LSA", "Straße", "Sonstiges"];
