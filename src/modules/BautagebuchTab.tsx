@@ -408,7 +408,7 @@ Antworte NUR mit dem JSON, kein anderer Text.`;
       {/* Tab Navigation */}
       <div style={{ display: "flex", gap: 4, marginBottom: 12, background: "#f0f4f3", borderRadius: 12, padding: 4, overflowX: "auto", flexShrink: 0 }}>
         {[
-          { key: "chat",       label: `💬 Chat (${nachrichten.length})` },
+          { key: "chat",       label: `💬 Sascha (${nachrichten.length})` },
           { key: "tageslog",   label: "📝 Tageslog" },
           { key: "material",   label: `📦 Material (${materialien.length})` },
           { key: "fotos",      label: `📷 Fotos (${fotos.length})` },
