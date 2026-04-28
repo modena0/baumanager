@@ -6,6 +6,39 @@ const EINHEITEN = ["m³", "m²", "m", "t", "kg", "Stück", "l", "to", "Palette"]
 const MATERIAL_STATUS = ["geliefert", "verbaut", "gelagert"];
 const FOTO_TYPEN = ["allgemein", "Material", "Lieferschein", "Einbauort", "Schaden", "Abnahme"];
 
+// ── Wetter-Übersetzung ─────────────────────────────────────────────────────────
+const WETTER_DE: Record<string, string> = {
+  "Sunny": "Sonnig", "Clear": "Klar", "Partly cloudy": "Teilweise bewölkt",
+  "Cloudy": "Bewölkt", "Overcast": "Bedeckt", "Mist": "Neblig",
+  "Patchy rain possible": "Leichter Regen möglich", "Patchy snow possible": "Leichter Schnee möglich",
+  "Blowing snow": "Schneetreiben", "Blizzard": "Schneesturm", "Fog": "Nebel",
+  "Freezing fog": "Gefrierender Nebel", "Patchy light drizzle": "Leichter Nieselregen",
+  "Light drizzle": "Nieselregen", "Freezing drizzle": "Gefrierender Nieselregen",
+  "Heavy freezing drizzle": "Starker gefrierender Nieselregen",
+  "Patchy light rain": "Leichter Regen", "Light rain": "Leichter Regen",
+  "Moderate rain at times": "Mäßiger Regen", "Moderate rain": "Mäßiger Regen",
+  "Heavy rain at times": "Starker Regen", "Heavy rain": "Starker Regen",
+  "Light freezing rain": "Leichter Gefrierregen", "Moderate or heavy freezing rain": "Starker Gefrierregen",
+  "Light sleet": "Leichter Graupel", "Moderate or heavy sleet": "Starker Graupel",
+  "Patchy light snow": "Leichter Schnee", "Light snow": "Leichter Schnee",
+  "Patchy moderate snow": "Mäßiger Schnee", "Moderate snow": "Mäßiger Schnee",
+  "Patchy heavy snow": "Starker Schnee", "Heavy snow": "Starker Schnee",
+  "Ice pellets": "Eisregen", "Light rain shower": "Leichter Regenschauer",
+  "Moderate or heavy rain shower": "Starker Regenschauer", "Torrential rain shower": "Starkregen",
+  "Light sleet showers": "Leichter Graupelschauer", "Moderate or heavy sleet showers": "Starker Graupelschauer",
+  "Light snow showers": "Leichter Schneeschauer", "Moderate or heavy snow showers": "Starker Schneeschauer",
+  "Light showers of ice pellets": "Leichter Eisregen", "Moderate or heavy showers of ice pellets": "Starker Eisregen",
+  "Patchy light rain with thunder": "Leichter Regen mit Gewitter",
+  "Moderate or heavy rain with thunder": "Gewitter mit Regen",
+  "Patchy light snow with thunder": "Leichter Schnee mit Gewitter",
+  "Moderate or heavy snow with thunder": "Gewitter mit Schnee",
+  "Thunder": "Gewitter", "Thunderstorm": "Gewitter",
+};
+
+function wetterDE(englisch: string): string {
+  return WETTER_DE[englisch] || englisch;
+}
+
 interface Eintrag {
   id?: number;
   baustelle_id: number;
@@ -63,11 +96,9 @@ export function BautagebuchTab({ data, currentUser, rolle }: any) {
   const [showMatForm, setShowMatForm] = useState(false);
   const [editMat,     setEditMat]     = useState<Material|null>(null);
   const [wetterLoad,  setWetterLoad]  = useState(false);
-  const [showExport,  setShowExport]  = useState(false);
 
   const isMobile = window.innerWidth < 768;
 
-  // Baustellen für diese Rolle filtern
   const meineBS = rolle === "baustellen_leitung"
     ? data.baustellen.filter((b: any) => b.mitarbeiter?.includes(currentUser?.id))
     : data.baustellen.filter((b: any) => b.status !== "abgeschlossen");
@@ -79,22 +110,31 @@ export function BautagebuchTab({ data, currentUser, rolle }: any) {
   async function loadEintrag() {
     if (!selectedBS) return;
     setLoading(true);
+
     // Tageseintrag laden
     const { data: e } = await supabase.from("bautagebuch_eintraege")
-      .select("*").eq("baustelle_id", selectedBS).eq("datum", datum).single();
+      .select("*").eq("baustelle_id", selectedBS).eq("datum", datum).maybeSingle();
+
     if (e) {
-      setEintrag({ ...e, mitarbeiter_anwesend: Array.isArray(e.mitarbeiter_anwesend) ? e.mitarbeiter_anwesend.map(Number) : [], geraete: Array.isArray(e.geraete) ? e.geraete : [] });
+      setEintrag({
+        ...e,
+        mitarbeiter_anwesend: Array.isArray(e.mitarbeiter_anwesend) ? e.mitarbeiter_anwesend.map(Number) : [],
+        geraete: Array.isArray(e.geraete) ? e.geraete : [],
+      });
     } else {
       setEintrag({ baustelle_id: selectedBS, datum, mitarbeiter_anwesend: [], geraete: [] });
     }
+
     // Material laden
     const { data: m } = await supabase.from("bautagebuch_material")
-      .select("*").eq("baustelle_id", selectedBS).eq("datum", datum);
+      .select("*").eq("baustelle_id", selectedBS).eq("datum", datum).order("id");
     setMaterialien(m || []);
+
     // Fotos laden
     const { data: f } = await supabase.from("bautagebuch_fotos")
-      .select("*").eq("baustelle_id", selectedBS).eq("datum", datum);
+      .select("*").eq("baustelle_id", selectedBS).eq("datum", datum).order("id");
     setFotos(f || []);
+
     setLoading(false);
   }
 
@@ -102,15 +142,14 @@ export function BautagebuchTab({ data, currentUser, rolle }: any) {
     const p = { ...e, erstellt_von: currentUser?.name || "" };
     if (e.id) {
       await supabase.from("bautagebuch_eintraege").update(p).eq("id", e.id);
+      setEintrag(p);
     } else {
-      const { data: neu } = await supabase.from("bautagebuch_eintraege").insert([p]).select();
-      if (neu) setEintrag({ ...p, id: neu[0].id });
-      return;
+      const { data: neu, error } = await supabase.from("bautagebuch_eintraege").insert([p]).select().single();
+      if (!error && neu) setEintrag({ ...p, id: neu.id });
     }
-    setEintrag(p);
   }
 
-  // Wetter automatisch laden per KI/wttr.in
+  // Wetter laden mit deutscher Übersetzung
   async function wetterLaden() {
     if (!selectedBS) return;
     setWetterLoad(true);
@@ -121,10 +160,11 @@ export function BautagebuchTab({ data, currentUser, rolle }: any) {
       const d = await res.json();
       const w = d.current_condition?.[0];
       if (w && eintrag) {
+        const beschreibungEN = w.weatherDesc?.[0]?.value || "";
         const updated = {
           ...eintrag,
           temperatur: w.temp_C + "°C",
-          wetter: w.weatherDesc?.[0]?.value || "",
+          wetter: wetterDE(beschreibungEN),
           wind: w.windspeedKmph + " km/h",
           niederschlag: w.precipMM + " mm",
         };
@@ -132,23 +172,38 @@ export function BautagebuchTab({ data, currentUser, rolle }: any) {
         await saveEintrag(updated);
       }
     } catch {
-      // Fallback wenn API nicht erreichbar
-      if (eintrag) {
-        const updated = { ...eintrag, wetter: "Nicht abrufbar" };
-        setEintrag(updated);
-      }
+      if (eintrag) setEintrag({ ...eintrag, wetter: "Nicht abrufbar" });
     }
     setWetterLoad(false);
   }
 
+  // Material speichern – mit korrekten Pflichtfeldern
   async function saveMaterial(m: Material) {
-    const p = { ...m, baustelle_id: selectedBS!, datum, erstellt_von: currentUser?.name || "", eintrag_id: eintrag?.id };
+    const p: any = {
+      baustelle_id: selectedBS!,
+      datum,
+      materialart: m.materialart,
+      status: m.status || "geliefert",
+      erstellt_von: currentUser?.name || "",
+    };
+    // Optionale Felder nur wenn befüllt
+    if (eintrag?.id) p.eintrag_id = eintrag.id;
+    if (m.menge !== undefined && m.menge !== null) p.menge = m.menge;
+    if (m.einheit) p.einheit = m.einheit;
+    if (m.einbauort) p.einbauort = m.einbauort;
+    if (m.lv_position) p.lv_position = m.lv_position;
+    if (m.lieferant) p.lieferant = m.lieferant;
+    if (m.lieferschein_nr) p.lieferschein_nr = m.lieferschein_nr;
+    if (m.lieferschein_foto) p.lieferschein_foto = m.lieferschein_foto;
+    if (m.besonderheiten) p.besonderheiten = m.besonderheiten;
+
     if (m.id) {
-      await supabase.from("bautagebuch_material").update(p).eq("id", m.id);
-      setMaterialien(ms => ms.map(x => x.id === m.id ? { ...p, id: m.id } : x));
+      const { error } = await supabase.from("bautagebuch_material").update(p).eq("id", m.id);
+      if (!error) setMaterialien(ms => ms.map(x => x.id === m.id ? { ...p, id: m.id } : x));
     } else {
-      const { data: neu } = await supabase.from("bautagebuch_material").insert([p]).select();
-      if (neu) setMaterialien(ms => [...ms, { ...p, id: neu[0].id }]);
+      const { data: neu, error } = await supabase.from("bautagebuch_material").insert([p]).select().single();
+      if (!error && neu) setMaterialien(ms => [...ms, { ...p, id: neu.id }]);
+      else if (error) console.error("Material Fehler:", error);
     }
     setShowMatForm(false);
     setEditMat(null);
@@ -159,19 +214,68 @@ export function BautagebuchTab({ data, currentUser, rolle }: any) {
     setMaterialien(ms => ms.filter(m => m.id !== id));
   }
 
-  // Foto hochladen
-  const fotoRef = useRef<HTMLInputElement>(null);
+  // Foto hochladen – in Supabase Storage statt Base64
   async function fotoHochladen(e: React.ChangeEvent<HTMLInputElement>, typ: string) {
     const file = e.target.files?.[0];
     if (!file || !selectedBS) return;
-    const reader = new FileReader();
-    reader.onload = async (ev) => {
-      const url = ev.target?.result as string;
-      const foto: Foto = { baustelle_id: selectedBS, datum, url, typ, erstellt_von: currentUser?.name || "", eintrag_id: eintrag?.id };
-      const { data: neu } = await supabase.from("bautagebuch_fotos").insert([foto]).select();
-      if (neu) setFotos(fs => [...fs, { ...foto, id: neu[0].id }]);
+
+    // Sicherstelle dass Eintrag existiert
+    let eintragsId = eintrag?.id;
+    if (!eintragsId && eintrag) {
+      const { data: neu } = await supabase.from("bautagebuch_eintraege").insert([{
+        ...eintrag, erstellt_von: currentUser?.name || ""
+      }]).select().single();
+      if (neu) { setEintrag({ ...eintrag, id: neu.id }); eintragsId = neu.id; }
+    }
+
+    // Versuche Supabase Storage Upload
+    const fileName = `${selectedBS}/${datum}/${Date.now()}_${file.name}`;
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from("dokumente")
+      .upload(fileName, file, { upsert: true });
+
+    let url = "";
+    if (!uploadError && uploadData) {
+      // Public URL holen
+      const { data: urlData } = supabase.storage.from("dokumente").getPublicUrl(fileName);
+      url = urlData.publicUrl;
+    } else {
+      // Fallback: Base64 (nur für kleine Bilder)
+      url = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          // Bild komprimieren
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement("canvas");
+            const maxSize = 800;
+            let w = img.width; let h = img.height;
+            if (w > maxSize) { h = h * maxSize / w; w = maxSize; }
+            if (h > maxSize) { w = w * maxSize / h; h = maxSize; }
+            canvas.width = w; canvas.height = h;
+            canvas.getContext("2d")?.drawImage(img, 0, 0, w, h);
+            resolve(canvas.toDataURL("image/jpeg", 0.6));
+          };
+          img.src = ev.target?.result as string;
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    if (!url) return;
+
+    const foto: any = {
+      baustelle_id: selectedBS,
+      datum,
+      url,
+      typ,
+      erstellt_von: currentUser?.name || "",
     };
-    reader.readAsDataURL(file);
+    if (eintragsId) foto.eintrag_id = eintragsId;
+
+    const { data: neu, error } = await supabase.from("bautagebuch_fotos").insert([foto]).select().single();
+    if (!error && neu) setFotos(fs => [...fs, { ...foto, id: neu.id }]);
+    else if (error) console.error("Foto Fehler:", error);
   }
 
   async function deleteFoto(id: number) {
@@ -182,12 +286,9 @@ export function BautagebuchTab({ data, currentUser, rolle }: any) {
   // Excel Export
   async function exportExcel() {
     if (!selectedBS) return;
-    // Alle Einträge für diese Baustelle laden
     const { data: alleEintraege } = await supabase.from("bautagebuch_eintraege").select("*").eq("baustelle_id", selectedBS).order("datum");
     const { data: allesMaterial } = await supabase.from("bautagebuch_material").select("*").eq("baustelle_id", selectedBS).order("datum");
     const bs = data.baustellen.find((b: any) => b.id === selectedBS);
-
-    // CSV erstellen (Excel-kompatibel)
     const csvRows = [
       ["Digitales Bautagebuch - " + bs?.name],
       ["Exportiert am: " + new Date().toLocaleDateString("de-DE")],
@@ -200,15 +301,12 @@ export function BautagebuchTab({ data, currentUser, rolle }: any) {
       ["Datum", "Materialart", "Menge", "Einheit", "Einbauort", "LV-Position", "Lieferant", "Lieferschein-Nr", "Status", "Besonderheiten", "Erstellt von"],
       ...(allesMaterial || []).map((m: any) => [m.datum, m.materialart, m.menge, m.einheit, m.einbauort, m.lv_position, m.lieferant, m.lieferschein_nr, m.status, m.besonderheiten, m.erstellt_von]),
     ];
-
     const csvContent = "\uFEFF" + csvRows.map(r => r.map(c => `"${(c || "").toString().replace(/"/g, '""')}"`).join(";")).join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url;
-    a.download = `Bautagebuch_${bs?.name}_${new Date().toISOString().split("T")[0]}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    a.href = url; a.download = `Bautagebuch_${bs?.name}_${new Date().toISOString().split("T")[0]}.csv`;
+    a.click(); URL.revokeObjectURL(url);
   }
 
   // ── BAUSTELLEN AUSWAHL ────────────────────────────────────────────────────────
@@ -216,7 +314,7 @@ export function BautagebuchTab({ data, currentUser, rolle }: any) {
     return (
       <div>
         <div style={{ fontSize: 15, fontWeight: 700, color: "#222", marginBottom: 16 }}>📋 Bautagebuch – Baustelle wählen</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12 }}>
           {meineBS.map((b: any) => (
             <button key={b.id} onClick={() => setSelectedBS(b.id)}
               style={{ ...C.card, textAlign: "left", border: "1.5px solid #e8eaed", cursor: "pointer", padding: 16, background: "#fff" }}>
@@ -238,7 +336,7 @@ export function BautagebuchTab({ data, currentUser, rolle }: any) {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <button onClick={() => setSelectedBS(null)}
+          <button onClick={() => { setSelectedBS(null); setEintrag(null); setMaterialien([]); setFotos([]); }}
             style={{ padding: "6px 12px", borderRadius: 8, border: "1.5px solid #eee", background: "#fff", cursor: "pointer", fontSize: 12, color: "#555" }}>
             ← Zurück
           </button>
@@ -259,9 +357,9 @@ export function BautagebuchTab({ data, currentUser, rolle }: any) {
       {/* Tab Navigation */}
       <div style={{ display: "flex", gap: 4, marginBottom: 16, background: "#f0f4f3", borderRadius: 12, padding: 4, overflowX: "auto" }}>
         {[
-          { key: "tageslog", label: "📝 Tageslog" },
-          { key: "material", label: `📦 Material (${materialien.length})` },
-          { key: "fotos",    label: `📷 Fotos (${fotos.length})` },
+          { key: "tageslog",   label: "📝 Tageslog" },
+          { key: "material",   label: `📦 Material (${materialien.length})` },
+          { key: "fotos",      label: `📷 Fotos (${fotos.length})` },
           { key: "uebersicht", label: "📊 Übersicht" },
         ].map(t => (
           <button key={t.key} onClick={() => setActiveTab(t.key as any)}
@@ -273,7 +371,7 @@ export function BautagebuchTab({ data, currentUser, rolle }: any) {
 
       {loading ? <div style={{ textAlign: "center", color: "#bbb", padding: 32 }}>Lädt...</div> : (
         <>
-          {/* ── TAGESLOG ─────────────────────────────────────────────────────── */}
+          {/* ── TAGESLOG ─────────────────────────────────────────────────── */}
           {activeTab === "tageslog" && eintrag && (
             <TageslogForm
               eintrag={eintrag}
@@ -282,15 +380,19 @@ export function BautagebuchTab({ data, currentUser, rolle }: any) {
               onSave={saveEintrag}
               onWetter={wetterLaden}
               wetterLoad={wetterLoad}
+              isMobile={isMobile}
             />
           )}
 
-          {/* ── MATERIAL ─────────────────────────────────────────────────────── */}
+          {/* ── MATERIAL ─────────────────────────────────────────────────── */}
           {activeTab === "material" && (
             <div>
               <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
-                <button style={{ ...C.btnP, display: "flex", alignItems: "center", gap: 6 }}
-                  onClick={() => { setEditMat({ baustelle_id: selectedBS!, datum, materialart: "", status: "geliefert", mitarbeiter_anwesend: [], geraete: [] } as any); setShowMatForm(true); }}>
+                <button style={{ ...C.btnP }}
+                  onClick={() => {
+                    setEditMat({ baustelle_id: selectedBS!, datum, materialart: "", status: "geliefert" } as Material);
+                    setShowMatForm(true);
+                  }}>
                   + Material erfassen
                 </button>
               </div>
@@ -318,26 +420,23 @@ export function BautagebuchTab({ data, currentUser, rolle }: any) {
                     </div>
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 8, fontSize: 11, color: "#666" }}>
-                    {m.einbauort && <div><span style={{ color: "#aaa" }}>Einbauort: </span>{m.einbauort}</div>}
-                    {m.lv_position && <div><span style={{ color: "#aaa" }}>LV-Pos: </span>{m.lv_position}</div>}
-                    {m.lieferant && <div><span style={{ color: "#aaa" }}>Lieferant: </span>{m.lieferant}</div>}
+                    {m.einbauort    && <div><span style={{ color: "#aaa" }}>Einbauort: </span>{m.einbauort}</div>}
+                    {m.lv_position  && <div><span style={{ color: "#aaa" }}>LV-Pos: </span>{m.lv_position}</div>}
+                    {m.lieferant    && <div><span style={{ color: "#aaa" }}>Lieferant: </span>{m.lieferant}</div>}
                     {m.lieferschein_nr && <div><span style={{ color: "#aaa" }}>LS-Nr: </span>{m.lieferschein_nr}</div>}
                   </div>
                   {m.besonderheiten && <div style={{ marginTop: 6, padding: "6px 10px", background: "#fff8e1", borderRadius: 8, fontSize: 11, color: "#BA7517" }}>⚠ {m.besonderheiten}</div>}
                   {m.lieferschein_foto && (
-                    <div style={{ marginTop: 8 }}>
-                      <img src={m.lieferschein_foto} alt="Lieferschein" style={{ height: 60, borderRadius: 6, border: "1px solid #eee", cursor: "pointer" }} onClick={() => window.open(m.lieferschein_foto)} />
-                    </div>
+                    <img src={m.lieferschein_foto} alt="Lieferschein" style={{ height: 60, borderRadius: 6, border: "1px solid #eee", cursor: "pointer", marginTop: 8 }} onClick={() => window.open(m.lieferschein_foto)} />
                   )}
                 </div>
               ))}
             </div>
           )}
 
-          {/* ── FOTOS ────────────────────────────────────────────────────────── */}
+          {/* ── FOTOS ────────────────────────────────────────────────────── */}
           {activeTab === "fotos" && (
             <div>
-              {/* Foto Upload Buttons */}
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
                 {FOTO_TYPEN.map(typ => (
                   <label key={typ} style={{ padding: "8px 14px", borderRadius: 10, border: "1.5px solid #e8eaed", background: "#fff", cursor: "pointer", fontSize: 12, color: "#555", display: "flex", alignItems: "center", gap: 5 }}>
@@ -373,7 +472,7 @@ export function BautagebuchTab({ data, currentUser, rolle }: any) {
             </div>
           )}
 
-          {/* ── ÜBERSICHT ────────────────────────────────────────────────────── */}
+          {/* ── ÜBERSICHT ────────────────────────────────────────────────── */}
           {activeTab === "uebersicht" && (
             <UebersichtTab bsId={selectedBS} data={data} />
           )}
@@ -382,18 +481,14 @@ export function BautagebuchTab({ data, currentUser, rolle }: any) {
 
       {/* Material Formular Modal */}
       {showMatForm && editMat && (
-        <MaterialFormular
-          material={editMat}
-          onSave={saveMaterial}
-          onClose={() => { setShowMatForm(false); setEditMat(null); }}
-        />
+        <MaterialFormular material={editMat} isMobile={isMobile} onSave={saveMaterial} onClose={() => { setShowMatForm(false); setEditMat(null); }} />
       )}
     </div>
   );
 }
 
 // ── Tageslog Formular ──────────────────────────────────────────────────────────
-function TageslogForm({ eintrag, setEintrag, data, onSave, onWetter, wetterLoad }: any) {
+function TageslogForm({ eintrag, setEintrag, data, onSave, onWetter, wetterLoad, isMobile }: any) {
   const [saved, setSaved] = useState(false);
 
   async function handleSave() {
@@ -421,7 +516,8 @@ function TageslogForm({ eintrag, setEintrag, data, onSave, onWetter, wetterLoad 
             {wetterLoad ? "Lädt..." : "⟳ Auto-laden"}
           </button>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        {/* Wetter-Felder: 2x2 auf Mobile, 4 nebeneinander auf Desktop */}
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 10 }}>
           {[
             ["Wetter", "wetter", "text", "z.B. Bewölkt"],
             ["Temperatur", "temperatur", "text", "z.B. 18°C"],
@@ -437,17 +533,19 @@ function TageslogForm({ eintrag, setEintrag, data, onSave, onWetter, wetterLoad 
         </div>
       </div>
 
-      {/* Arbeitszeiten */}
+      {/* Arbeitszeiten – auf Mobile untereinander statt nebeneinander */}
       <div style={{ ...C.card, padding: "14px 16px" }}>
         <div style={{ fontSize: 13, fontWeight: 600, color: "#222", marginBottom: 12 }}>⏰ Arbeitszeiten</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
           <div>
             <label style={C.lbl}>Arbeitsbeginn</label>
-            <input type="time" style={C.inp} value={eintrag.arbeitsbeginn || ""} onChange={e => setEintrag((x: any) => ({ ...x, arbeitsbeginn: e.target.value }))} />
+            <input type="time" style={{ ...C.inp, fontSize: isMobile ? 16 : 13 }} value={eintrag.arbeitsbeginn || ""}
+              onChange={e => setEintrag((x: any) => ({ ...x, arbeitsbeginn: e.target.value }))} />
           </div>
           <div>
             <label style={C.lbl}>Arbeitsende</label>
-            <input type="time" style={C.inp} value={eintrag.arbeitsende || ""} onChange={e => setEintrag((x: any) => ({ ...x, arbeitsende: e.target.value }))} />
+            <input type="time" style={{ ...C.inp, fontSize: isMobile ? 16 : 13 }} value={eintrag.arbeitsende || ""}
+              onChange={e => setEintrag((x: any) => ({ ...x, arbeitsende: e.target.value }))} />
           </div>
         </div>
       </div>
@@ -456,22 +554,17 @@ function TageslogForm({ eintrag, setEintrag, data, onSave, onWetter, wetterLoad 
       <div style={{ ...C.card, padding: "14px 16px" }}>
         <div style={{ fontSize: 13, fontWeight: 600, color: "#222", marginBottom: 10 }}>👷 Anwesende Mitarbeiter ({eintrag.mitarbeiter_anwesend.length})</div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {(() => {
-  const bs = data.baustellen.find((b: any) => b.id === eintrag.baustelle_id);
-  const bsMaIds = (bs?.mitarbeiter || []).map(Number);
-  const bsMa = data.mitarbeiter.filter((m: any) =>
-    bsMaIds.includes(m.id) && m.status !== "krank" && m.status !== "Urlaub" && m.status !== "gekuendigt"
-  );
-  return bsMa;
-})().map((m: any) => {
-            const sel = eintrag.mitarbeiter_anwesend.includes(m.id);
-            return (
-              <button key={m.id} onClick={() => toggleMA(m.id)}
-                style={{ padding: "6px 12px", borderRadius: 10, border: "1.5px solid " + (sel ? ACCENT : "#eee"), background: sel ? "#e8f5f3" : "#fff", cursor: "pointer", fontSize: 12, color: sel ? ACCENT : "#555", fontWeight: sel ? 600 : 400 }}>
-                {m.name}
-              </button>
-            );
-          })}
+          {data.mitarbeiter
+            .filter((m: any) => m.status !== "krank" && m.status !== "Urlaub" && m.status !== "gekuendigt")
+            .map((m: any) => {
+              const sel = eintrag.mitarbeiter_anwesend.includes(m.id);
+              return (
+                <button key={m.id} onClick={() => toggleMA(m.id)}
+                  style={{ padding: isMobile ? "8px 12px" : "6px 12px", borderRadius: 10, border: "1.5px solid " + (sel ? ACCENT : "#eee"), background: sel ? "#e8f5f3" : "#fff", cursor: "pointer", fontSize: isMobile ? 13 : 12, color: sel ? ACCENT : "#555", fontWeight: sel ? 600 : 400 }}>
+                  {m.name}
+                </button>
+              );
+            })}
         </div>
       </div>
 
@@ -486,7 +579,6 @@ function TageslogForm({ eintrag, setEintrag, data, onSave, onWetter, wetterLoad 
           onChange={e => setEintrag((x: any) => ({ ...x, besonderheiten: e.target.value }))} />
       </div>
 
-      {/* Speichern */}
       <button onClick={handleSave}
         style={{ ...C.btnP, width: "100%", padding: "13px", fontSize: 14, background: saved ? "#1D9E75" : ACCENT }}>
         {saved ? "✓ Gespeichert!" : "Tageslog speichern"}
@@ -496,17 +588,32 @@ function TageslogForm({ eintrag, setEintrag, data, onSave, onWetter, wetterLoad 
 }
 
 // ── Material Formular ──────────────────────────────────────────────────────────
-function MaterialFormular({ material, onSave, onClose }: any) {
+function MaterialFormular({ material, isMobile, onSave, onClose }: any) {
   const [f, setF] = useState<Material>({ ...material });
-  const isMobile = window.innerWidth < 768;
   const lsRef = useRef<HTMLInputElement>(null);
 
   async function lsFotoHochladen(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => setF(x => ({ ...x, lieferschein_foto: ev.target?.result as string }));
-    reader.readAsDataURL(file);
+    // Komprimieren
+    const url = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          const maxSize = 600;
+          let w = img.width; let h = img.height;
+          if (w > maxSize) { h = h * maxSize / w; w = maxSize; }
+          canvas.width = w; canvas.height = h;
+          canvas.getContext("2d")?.drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL("image/jpeg", 0.5));
+        };
+        img.src = ev.target?.result as string;
+      };
+      reader.readAsDataURL(file);
+    });
+    setF(x => ({ ...x, lieferschein_foto: url }));
   }
 
   return (
@@ -520,7 +627,7 @@ function MaterialFormular({ material, onSave, onClose }: any) {
           {material.id ? "Material bearbeiten" : "Material erfassen"}
         </div>
 
-        <div style={C.r2}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
           <div>
             <label style={C.lbl}>Materialart *</label>
             <input style={C.inp} value={f.materialart} onChange={e => setF(x => ({ ...x, materialart: e.target.value }))} placeholder="z.B. Beton C25/30" />
@@ -533,7 +640,7 @@ function MaterialFormular({ material, onSave, onClose }: any) {
           </div>
         </div>
 
-        <div style={C.r2}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr", gap: 10 }}>
           <div>
             <label style={C.lbl}>Menge</label>
             <input type="number" style={C.inp} value={f.menge || ""} onChange={e => setF(x => ({ ...x, menge: parseFloat(e.target.value) }))} placeholder="0" />
@@ -547,7 +654,7 @@ function MaterialFormular({ material, onSave, onClose }: any) {
           </div>
         </div>
 
-        <div style={C.r2}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
           <div>
             <label style={C.lbl}>Einbauort / Bauabschnitt</label>
             <input style={C.inp} value={f.einbauort || ""} onChange={e => setF(x => ({ ...x, einbauort: e.target.value }))} placeholder="z.B. Schacht 3, FGU" />
@@ -558,7 +665,7 @@ function MaterialFormular({ material, onSave, onClose }: any) {
           </div>
         </div>
 
-        <div style={C.r2}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
           <div>
             <label style={C.lbl}>Lieferant</label>
             <input style={C.inp} value={f.lieferant || ""} onChange={e => setF(x => ({ ...x, lieferant: e.target.value }))} placeholder="Firmenname" />
@@ -569,7 +676,6 @@ function MaterialFormular({ material, onSave, onClose }: any) {
           </div>
         </div>
 
-        {/* Lieferschein Foto */}
         <div style={{ marginBottom: 8 }}>
           <label style={C.lbl}>Lieferschein Foto</label>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -625,28 +731,16 @@ function UebersichtTab({ bsId, data }: any) {
 
   return (
     <div>
-      {/* Filter */}
       <div style={{ ...C.card, padding: "12px 14px", marginBottom: 14 }}>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
-          <div>
-            <label style={C.lbl}>Von</label>
-            <input type="date" style={{ ...C.inp, marginBottom: 0, width: "auto" }} value={filterVon} onChange={e => setFilterVon(e.target.value)} />
-          </div>
-          <div>
-            <label style={C.lbl}>Bis</label>
-            <input type="date" style={{ ...C.inp, marginBottom: 0, width: "auto" }} value={filterBis} onChange={e => setFilterBis(e.target.value)} />
-          </div>
+          <div><label style={C.lbl}>Von</label><input type="date" style={{ ...C.inp, marginBottom: 0, width: "auto" }} value={filterVon} onChange={e => setFilterVon(e.target.value)} /></div>
+          <div><label style={C.lbl}>Bis</label><input type="date" style={{ ...C.inp, marginBottom: 0, width: "auto" }} value={filterBis} onChange={e => setFilterBis(e.target.value)} /></div>
           <button onClick={() => { setFilterVon(""); setFilterBis(""); }} style={{ ...C.btnS, fontSize: 12 }}>Zurücksetzen</button>
         </div>
       </div>
 
-      {/* Statistiken */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 14 }}>
-        {[
-          ["Einträge", gefiltertE.length, "📝"],
-          ["Materialien", gefiltertM.length, "📦"],
-          ["Besonderheiten", gefiltertE.filter(e => e.besonderheiten).length, "⚠"],
-        ].map(([label, val, icon]) => (
+        {[["Einträge", gefiltertE.length, "📝"], ["Materialien", gefiltertM.length, "📦"], ["Besonderheiten", gefiltertE.filter(e => e.besonderheiten).length, "⚠"]].map(([label, val, icon]) => (
           <div key={label as string} style={{ ...C.card, textAlign: "center", padding: "14px 10px" }}>
             <div style={{ fontSize: 22 }}>{icon}</div>
             <div style={{ fontSize: 22, fontWeight: 700, color: ACCENT }}>{val}</div>
@@ -655,7 +749,6 @@ function UebersichtTab({ bsId, data }: any) {
         ))}
       </div>
 
-      {/* Letzte Einträge */}
       <div style={{ ...C.card, padding: "14px 16px" }}>
         <div style={{ fontSize: 13, fontWeight: 600, color: "#222", marginBottom: 12 }}>Tageseinträge</div>
         {gefiltertE.length === 0 && <div style={{ fontSize: 12, color: "#bbb", textAlign: "center", padding: 16 }}>Keine Einträge</div>}
