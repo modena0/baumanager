@@ -16,10 +16,12 @@ import { LagerTab }        from "./modules/LagerTab";
 import { KITab }           from "./modules/KITab";
 import { ROLLE_TABS, KANN } from "./rollen";
 import type { Rolle } from "./rollen";
+import { TeamplanungTab } from "./modules/TeamplanungTab";
+
 
 const MODULE_MAP: Record<number, ComponentType<any>> = {
   0: Dashboard, 1: MitarbeiterTab, 2: ZuordnungsBoard, 3: BaustellenTab,
-  4: KalenderTab, 5: LagerTab, 6: FuhrparkTab, 7: KITab,
+  4: KalenderTab, 5: LagerTab, 6: FuhrparkTab, 7: KITab, 8: TeamplanungTab
 };
 
 // ── Hilfsfunktionen ────────────────────────────────────────────────────────────
