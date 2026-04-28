@@ -1,7 +1,17 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { C, ACCENT } from "../lib/constants";
 import { getProgress } from "../lib/utils";
 import { Kalender } from "../components/Kalender";
+
+declare const L: any;
+
+const HAUPTQUARTIER = { lat: 51.137514, lng: 13.782102 };
+
+const STATUS_FARBEN: Record<string, string> = {
+  laufend:       "#4DB6AC",
+  geplant:       "#7986CB",
+  abgeschlossen: "#888",
+};
 
 export function Dashboard({ data, setTab, saveTermin, deleteTermin, setSelectedBS, isMobile }: any) {
   const [aiRes, setAiRes]   = useState("");
@@ -33,16 +43,22 @@ export function Dashboard({ data, setTab, saveTermin, deleteTermin, setSelectedB
       fahrzeuge: data.fahrzeuge,
       mitarbeiter: data.mitarbeiter.map((m: any) => ({ name: m.name, status: m.status, baustelle: m.baustelle })),
     });
-    fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 400, system: ctx, messages: [{ role: "user", content: p }] }) })
-      .then(r => r.json()).then(d => setAiRes((d.content && d.content[0] && d.content[0].text) || "Keine Antwort.")).catch(e => setAiRes("Fehler: " + e.message)).finally(() => setAiLoad(false));
+    fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 400, system: ctx, messages: [{ role: "user", content: p }] }),
+    })
+      .then(r => r.json())
+      .then(d => setAiRes((d.content && d.content[0] && d.content[0].text) || "Keine Antwort."))
+      .catch(e => setAiRes("Fehler: " + e.message))
+      .finally(() => setAiLoad(false));
   };
 
-  // ── MOBILE LAYOUT: alles untereinander ───────────────────────────────────────
+  // ── MOBILE LAYOUT ─────────────────────────────────────────────────────────────
   if (isMobile) {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
-        {/* Heute – wenn Termine vorhanden */}
         {heuteTermine.length > 0 && (
           <div style={{ ...C.card, padding: "12px 14px" }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: "#222", marginBottom: 8 }}>📅 Heute</div>
@@ -58,7 +74,7 @@ export function Dashboard({ data, setTab, saveTermin, deleteTermin, setSelectedB
           </div>
         )}
 
-        {/* 1. Aktive Baustellen */}
+        {/* Aktive Baustellen */}
         <div style={{ ...C.card, padding: "12px 14px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: "#222" }}>Aktive Baustellen</span>
@@ -72,10 +88,8 @@ export function Dashboard({ data, setTab, saveTermin, deleteTermin, setSelectedB
             const done = auf.filter((a: any) => a.erledigt).length;
             const dl = getDL(b.ende);
             return (
-              <div key={b.id}
-                onClick={() => { setSelectedBS(b.id); setTab(3); }}
-                style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: "1px solid #f5f5f5", cursor: "pointer" }}
-              >
+              <div key={b.id} onClick={() => { setSelectedBS(b.id); setTab(3); }}
+                style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: "1px solid #f5f5f5", cursor: "pointer" }}>
                 <div style={{ width: 4, height: 40, borderRadius: 2, background: col, flexShrink: 0 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: "#222", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{b.name}</div>
@@ -94,7 +108,7 @@ export function Dashboard({ data, setTab, saveTermin, deleteTermin, setSelectedB
           })}
         </div>
 
-        {/* 2. Kalender */}
+        {/* Kalender */}
         <div style={{ ...C.card, padding: "12px 14px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: "#222" }}>Kalender</span>
@@ -103,34 +117,16 @@ export function Dashboard({ data, setTab, saveTermin, deleteTermin, setSelectedB
           <Kalender termine={data.termine || []} onSave={saveTermin} onDelete={deleteTermin} compact={true} baustellen={data.baustellen} />
         </div>
 
-        {/* 3. Baustellen-Übersicht Map */}
+        {/* Mini Karte auf Mobile */}
         <div style={{ ...C.card, padding: "12px 14px" }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#222", marginBottom: 8 }}>Baustellen-Übersicht</div>
-          <div style={{ borderRadius: 10, overflow: "hidden", border: "1px solid #eee" }}>
-            <svg viewBox="0 0 540 200" width="100%" style={{ display: "block", background: "#e8f5f3" }}>
-              <path d="M0,140 Q140,120 270,150 Q390,180 540,160" fill="none" stroke="#b2dfdb" strokeWidth={12} />
-              <path d="M270,0 Q278,80 270,150 Q262,190 278,200" fill="none" stroke="#b2dfdb" strokeWidth={8} />
-              <text x={230} y={195} fontSize={10} fill={ACCENT} textAnchor="middle" fontWeight={600}>Dresden</text>
-              <text x={65} y={185} fontSize={10} fill={ACCENT} textAnchor="middle" fontWeight={600}>Leipzig</text>
-              {data.baustellen.map((b: any, idx: number) => {
-                const pins = [{ x: 310, y: 85 }, { x: 235, y: 132 }, { x: 75, y: 160 }];
-                const p = pins[idx] || { x: 160 + idx * 60, y: 120 };
-                const prog = getProgress(b);
-                return (
-                  <g key={b.id} style={{ cursor: "pointer" }} onClick={() => { setSelectedBS(b.id); setTab(3); }}>
-                    <circle cx={p.x} cy={p.y} r={10} fill="#fff" stroke={ACCENT} strokeWidth={2} />
-                    <circle cx={p.x} cy={p.y} r={6} fill={ACCENT} />
-                    <rect x={p.x - 28} y={p.y + 13} width={56} height={20} rx={5} fill="#fff" stroke={ACCENT} strokeWidth={1} />
-                    <text x={p.x} y={p.y + 22} textAnchor="middle" fontSize={7} fill={ACCENT} fontWeight={700}>{b.name}</text>
-                    <text x={p.x} y={p.y + 30} textAnchor="middle" fontSize={7} fill="#888">{prog}%</text>
-                  </g>
-                );
-              })}
-            </svg>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "#222" }}>🗺 Karte</span>
+            <button onClick={() => setTab(11)} style={{ fontSize: 11, color: ACCENT, background: "none", border: "none", cursor: "pointer", fontWeight: 500 }}>Vollansicht →</button>
           </div>
+          <MiniKarte data={data} setTab={setTab} setSelectedBS={setSelectedBS} hoehe={200} />
         </div>
 
-        {/* 4. KI Hilfe */}
+        {/* KI Hilfe */}
         <div style={{ ...C.card, padding: "12px 14px" }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: "#222", marginBottom: 8 }}>✦ KI Hilfe</div>
           <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
@@ -148,7 +144,6 @@ export function Dashboard({ data, setTab, saveTermin, deleteTermin, setSelectedB
             </div>
           )}
         </div>
-
       </div>
     );
   }
@@ -161,7 +156,7 @@ export function Dashboard({ data, setTab, saveTermin, deleteTermin, setSelectedB
       <div style={{ display: "flex", flexDirection: "column", gap: 12, height: "100%", overflow: "hidden" }}>
 
         {/* Aktive Baustellen */}
-        <div style={{ ...C.card, display: "flex", flexDirection: "column", flex: "0 0 auto", maxHeight: "55%" }}>
+        <div style={{ ...C.card, display: "flex", flexDirection: "column", flex: "0 0 auto", maxHeight: "45%" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexShrink: 0 }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: "#222" }}>Aktive Baustellen</span>
             <button onClick={() => setTab(3)} style={{ fontSize: 11, color: ACCENT, background: "none", border: "none", cursor: "pointer", fontWeight: 500 }}>Alle anzeigen →</button>
@@ -177,8 +172,7 @@ export function Dashboard({ data, setTab, saveTermin, deleteTermin, setSelectedB
                 <div key={b.id} onClick={() => { setSelectedBS(b.id); setTab(3); }}
                   style={{ background: col + "28", borderRadius: 8, padding: "6px 10px", marginBottom: 5, border: "1.5px solid " + col, cursor: "pointer", transition: "transform 0.12s" }}
                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)"; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ""; }}
-                >
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ""; }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
                     <div>
                       <span style={{ fontWeight: 600, fontSize: 12, color: "#222" }}>{b.name}</span>
@@ -205,31 +199,14 @@ export function Dashboard({ data, setTab, saveTermin, deleteTermin, setSelectedB
           </div>
         </div>
 
-        {/* Baustellen-Übersicht Map */}
-        <div style={{ ...C.card, flex: 1, minHeight: 0, overflow: "hidden" }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#222", marginBottom: 8 }}>Baustellen-Übersicht</div>
-          <div style={{ borderRadius: 10, overflow: "hidden", border: "1px solid #eee", height: "calc(100% - 30px)" }}>
-            <svg viewBox="0 0 540 200" width="100%" height="100%" style={{ display: "block", background: "#e8f5f3" }}>
-              <path d="M0,140 Q140,120 270,150 Q390,180 540,160" fill="none" stroke="#b2dfdb" strokeWidth={12} />
-              <path d="M270,0 Q278,80 270,150 Q262,190 278,200" fill="none" stroke="#b2dfdb" strokeWidth={8} />
-              <text x={230} y={195} fontSize={10} fill={ACCENT} textAnchor="middle" fontWeight={600}>Dresden</text>
-              <text x={65} y={185} fontSize={10} fill={ACCENT} textAnchor="middle" fontWeight={600}>Leipzig</text>
-              {data.baustellen.map((b: any, idx: number) => {
-                const pins = [{ x: 310, y: 85 }, { x: 235, y: 132 }, { x: 75, y: 160 }];
-                const p = pins[idx] || { x: 160 + idx * 60, y: 120 };
-                const prog = getProgress(b);
-                return (
-                  <g key={b.id} style={{ cursor: "pointer" }} onClick={() => { setSelectedBS(b.id); setTab(3); }}>
-                    {b.status === "laufend" && <circle cx={p.x} cy={p.y} r={18} fill={ACCENT} opacity={0.12} />}
-                    <circle cx={p.x} cy={p.y} r={10} fill="#fff" stroke={ACCENT} strokeWidth={2} />
-                    <circle cx={p.x} cy={p.y} r={6} fill={ACCENT} />
-                    <rect x={p.x - 28} y={p.y + 13} width={56} height={20} rx={5} fill="#fff" stroke={ACCENT} strokeWidth={1} />
-                    <text x={p.x} y={p.y + 22} textAnchor="middle" fontSize={7} fill={ACCENT} fontWeight={700}>{b.name}</text>
-                    <text x={p.x} y={p.y + 30} textAnchor="middle" fontSize={7} fill="#888">{prog}%</text>
-                  </g>
-                );
-              })}
-            </svg>
+        {/* Echte Karte statt SVG */}
+        <div style={{ ...C.card, flex: 1, minHeight: 0, overflow: "hidden", padding: "14px 16px", display: "flex", flexDirection: "column" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexShrink: 0 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "#222" }}>🗺 Baustellen-Übersicht</span>
+            <button onClick={() => setTab(11)} style={{ fontSize: 11, color: ACCENT, background: "none", border: "none", cursor: "pointer", fontWeight: 500 }}>Vollansicht →</button>
+          </div>
+          <div style={{ flex: 1, minHeight: 0 }}>
+            <MiniKarte data={data} setTab={setTab} setSelectedBS={setSelectedBS} hoehe={undefined} />
           </div>
         </div>
       </div>
@@ -279,6 +256,107 @@ export function Dashboard({ data, setTab, saveTermin, deleteTermin, setSelectedB
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Mini Karte Komponente ──────────────────────────────────────────────────────
+function MiniKarte({ data, setTab, setSelectedBS, hoehe }: any) {
+  const mapRef     = useRef<HTMLDivElement>(null);
+  const leafletMap = useRef<any>(null);
+  const markersRef = useRef<any[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  // Leaflet laden
+  useEffect(() => {
+    if (document.getElementById("leaflet-css")) { setLoaded(true); return; }
+    const css = document.createElement("link");
+    css.id = "leaflet-css";
+    css.rel = "stylesheet";
+    css.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+    document.head.appendChild(css);
+    const script = document.createElement("script");
+    script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+    script.onload = () => setLoaded(true);
+    document.head.appendChild(script);
+  }, []);
+
+  // Karte initialisieren
+  useEffect(() => {
+    if (!loaded || !mapRef.current || leafletMap.current) return;
+    leafletMap.current = L.map(mapRef.current, {
+      center: [HAUPTQUARTIER.lat, HAUPTQUARTIER.lng],
+      zoom: 11,
+      zoomControl: false,
+      attributionControl: false,
+      dragging: true,
+      scrollWheelZoom: false,
+    });
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(leafletMap.current);
+    return () => { if (leafletMap.current) { leafletMap.current.remove(); leafletMap.current = null; } };
+  }, [loaded]);
+
+  // Marker setzen
+  useEffect(() => {
+    if (!loaded || !leafletMap.current) return;
+    const map = leafletMap.current;
+
+    // Alte Marker entfernen
+    markersRef.current.forEach(m => m.remove());
+    markersRef.current = [];
+
+    // Hauptquartier
+    const hqIcon = L.divIcon({
+      className: "",
+      html: `<div style="width:32px;height:32px;border-radius:50%;background:#222;border:2px solid ${ACCENT};display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,0.3);">🏢</div>`,
+      iconSize: [32, 32], iconAnchor: [16, 16],
+    });
+    const hqM = L.marker([HAUPTQUARTIER.lat, HAUPTQUARTIER.lng], { icon: hqIcon, zIndexOffset: 1000 })
+      .addTo(map)
+      .bindTooltip("🏢 Hauptquartier", { direction: "top" });
+    markersRef.current.push(hqM);
+
+    // Baustellen
+    const bsMitKoords = data.baustellen.filter((b: any) => b.lat && b.lng);
+    bsMitKoords.forEach((b: any) => {
+      const farbe = STATUS_FARBEN[b.status] || "#888";
+      const icon = L.divIcon({
+        className: "",
+        html: `<div style="width:28px;height:28px;border-radius:50% 50% 50% 0;background:${farbe};border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.3);transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;"><span style="transform:rotate(45deg);font-size:12px;">⛏</span></div>`,
+        iconSize: [28, 28], iconAnchor: [14, 28],
+      });
+      const marker = L.marker([b.lat, b.lng], { icon })
+        .addTo(map)
+        .bindTooltip(`<b>${b.name}</b><br>${b.status}`, { direction: "top" })
+        .on("click", () => { setSelectedBS(b.id); setTab(3); });
+      markersRef.current.push(marker);
+    });
+
+    // Karte auf alle Punkte zentrieren
+    const allePunkte = [
+      [HAUPTQUARTIER.lat, HAUPTQUARTIER.lng],
+      ...bsMitKoords.map((b: any) => [b.lat, b.lng]),
+    ];
+    if (allePunkte.length > 1) {
+      const bounds = L.latLngBounds(allePunkte);
+      if (bounds.isValid()) map.fitBounds(bounds, { padding: [20, 20] });
+    }
+  }, [loaded, data]);
+
+  return (
+    <div style={{ position: "relative", width: "100%", height: hoehe ? hoehe + "px" : "100%", borderRadius: 10, overflow: "hidden", border: "1px solid #eee" }}>
+      <div ref={mapRef} style={{ width: "100%", height: "100%" }} />
+      {!loaded && (
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "#f0f4f3" }}>
+          <div style={{ textAlign: "center", color: "#bbb", fontSize: 12 }}>🗺 Karte lädt...</div>
+        </div>
+      )}
+      {/* Vollansicht Button */}
+      <button
+        onClick={() => setTab(11)}
+        style={{ position: "absolute", bottom: 8, right: 8, background: "rgba(255,255,255,0.9)", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 10, cursor: "pointer", color: "#555", zIndex: 1000, boxShadow: "0 1px 4px rgba(0,0,0,0.15)" }}>
+        ⛶ Vollansicht
+      </button>
     </div>
   );
 }
