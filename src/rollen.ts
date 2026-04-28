@@ -8,10 +8,10 @@ export const ROLLEN_LABEL: Record<Rolle, string> = {
 };
 
 export const ROLLE_TABS: Record<Rolle, number[]> = {
-admin:  [0, 1, 3, 4, 5, 6, 7, 8],
-chef:   [0, 1, 3, 4, 5, 6, 7, 8],
-polier: [0, 1, 3, 4, 5, 6, 7, 8],
-baustellen_leitung: [0, 3],
+admin:              [0, 1, 3, 4, 5, 6, 7, 8, 9],
+chef:               [0, 1, 3, 4, 5, 6, 7, 8, 9],
+polier:             [0, 1, 3, 4, 5, 6, 7, 8, 9],
+baustellen_leitung: [0, 3, 9],
 };
 
 export const KANN = {
