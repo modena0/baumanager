@@ -337,27 +337,18 @@ export function BautagebuchTab({ data, currentUser, rolle }: any) {
                 </div>
               )}
               {materialien.map(m => (
-                <div key={m.id} style={{ ...C.card, marginBottom: 10, padding: "14px 16px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                    <div>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: "#222" }}>{m.materialart}</div>
-                      <div style={{ fontSize: 12, color: ACCENT, marginTop: 2 }}>{m.menge} {m.einheit}</div>
-                    </div>
-                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                      <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 8, background: m.status === "verbaut" ? "#e8f5f3" : m.status === "gelagert" ? "#fff3e0" : "#f0f4f3", color: m.status === "verbaut" ? ACCENT : m.status === "gelagert" ? "#BA7517" : "#888", fontWeight: 600 }}>{m.status}</span>
-                      <button onClick={() => { setEditMat(m); setShowMatForm(true); }} style={{ padding: "3px 8px", borderRadius: 6, border: "1px solid #eee", background: "#fff", cursor: "pointer", fontSize: 11, color: "#555" }}>✎</button>
-                      <button onClick={() => deleteMaterial(m.id!)} style={{ padding: "3px 8px", borderRadius: 6, border: "none", background: "#E24B4A18", cursor: "pointer", fontSize: 11, color: "#E24B4A" }}>✕</button>
-                    </div>
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 8, fontSize: 11, color: "#666" }}>
-                    {m.einbauort    && <div><span style={{ color: "#aaa" }}>Einbauort: </span>{m.einbauort}</div>}
-                    {m.lv_position  && <div><span style={{ color: "#aaa" }}>LV-Pos: </span>{m.lv_position}</div>}
-                    {m.lieferant    && <div><span style={{ color: "#aaa" }}>Lieferant: </span>{m.lieferant}</div>}
-                    {m.lieferschein_nr && <div><span style={{ color: "#aaa" }}>LS-Nr: </span>{m.lieferschein_nr}</div>}
-                  </div>
-                  {m.besonderheiten && <div style={{ marginTop: 6, padding: "6px 10px", background: "#fff8e1", borderRadius: 8, fontSize: 11, color: "#BA7517" }}>⚠ {m.besonderheiten}</div>}
-                  {m.lieferschein_foto && <img src={m.lieferschein_foto} alt="LS" style={{ height: 60, borderRadius: 6, border: "1px solid #eee", cursor: "pointer", marginTop: 8 }} onClick={() => window.open(m.lieferschein_foto)} />}
-                </div>
+                <MaterialKarte
+                  key={m.id}
+                  m={m}
+                  fotos={fotos}
+                  isMobile={isMobile}
+                  onEdit={() => { setEditMat(m); setShowMatForm(true); }}
+                  onDelete={() => deleteMaterial(m.id!)}
+                  onFotoUpload={fotosHochladen}
+                  onFotoDelete={deleteFoto}
+                  onLightbox={setLightbox}
+                  uploading={fotoUpload}
+                />
               ))}
             </div>
           )}
@@ -425,17 +416,20 @@ export function BautagebuchTab({ data, currentUser, rolle }: any) {
                       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 10 }}>
                         {fotos.filter(f => f.typ === typ).map(f => (
                           <div key={f.id} style={{ borderRadius: 10, overflow: "hidden", border: "1px solid #eee", position: "relative", background: "#f8f8f8" }}>
-                            <img
-                              src={f.url}
-                              alt={f.typ}
-                              style={{ width: "100%", height: 130, objectFit: "cover", display: "block", cursor: "pointer" }}
+                            <div
                               onClick={() => setLightbox(f)}
-                              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                            />
+                              style={{ cursor: "pointer", width: "100%", height: 130, overflow: "hidden" }}>
+                              <img
+                                src={f.url}
+                                alt={f.typ}
+                                style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", pointerEvents: "none" }}
+                                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                              />
+                            </div>
                             <div style={{ padding: "6px 8px" }}>
                               <div style={{ fontSize: 10, color: "#aaa" }}>{f.erstellt_von}</div>
                             </div>
-                            <button onClick={() => deleteFoto(f.id!)}
+                            <button onClick={e => { e.stopPropagation(); deleteFoto(f.id!); }}
                               style={{ position: "absolute", top: 6, right: 6, background: "rgba(0,0,0,0.55)", border: "none", borderRadius: "50%", width: 24, height: 24, cursor: "pointer", color: "#fff", fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center" }}>
                               ✕
                             </button>
@@ -461,17 +455,28 @@ export function BautagebuchTab({ data, currentUser, rolle }: any) {
 
       {/* Lightbox */}
       {lightbox && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.9)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}
+        <div
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.92)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", zIndex: 99999, cursor: "zoom-out" }}
           onClick={() => setLightbox(null)}>
-          <div style={{ position: "relative", maxWidth: "95vw", maxHeight: "95vh" }}>
-            <img src={lightbox.url} alt={lightbox.typ} style={{ maxWidth: "95vw", maxHeight: "90vh", objectFit: "contain", borderRadius: 8 }} />
-            <div style={{ position: "absolute", bottom: -32, left: 0, right: 0, textAlign: "center", color: "#aaa", fontSize: 12 }}>
-              {lightbox.typ} · {lightbox.erstellt_von} · Tippen zum Schließen
-            </div>
-            <button onClick={() => setLightbox(null)}
-              style={{ position: "absolute", top: -16, right: -16, background: "#fff", border: "none", borderRadius: "50%", width: 32, height: 32, cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 8px rgba(0,0,0,0.3)" }}>
-              ✕
-            </button>
+          {/* Schließen Button oben rechts */}
+          <button
+            onClick={e => { e.stopPropagation(); setLightbox(null); }}
+            style={{ position: "fixed", top: 16, right: 16, background: "rgba(255,255,255,0.15)", border: "none", borderRadius: "50%", width: 44, height: 44, cursor: "pointer", color: "#fff", fontSize: 22, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100000 }}>
+            ✕
+          </button>
+          {/* Bild */}
+          <img
+            src={lightbox.url}
+            alt={lightbox.typ}
+            onClick={e => e.stopPropagation()}
+            style={{ maxWidth: "95vw", maxHeight: "85vh", objectFit: "contain", borderRadius: 8, boxShadow: "0 4px 32px rgba(0,0,0,0.5)", cursor: "default" }}
+            onError={(e) => { (e.target as HTMLImageElement).src = ""; }}
+          />
+          {/* Info unten */}
+          <div style={{ marginTop: 14, textAlign: "center", color: "rgba(255,255,255,0.6)", fontSize: 12 }}>
+            <span style={{ background: "rgba(255,255,255,0.1)", padding: "3px 10px", borderRadius: 8, marginRight: 8 }}>{lightbox.typ}</span>
+            {lightbox.erstellt_von && <span>{lightbox.erstellt_von}</span>}
+            <span style={{ display: "block", marginTop: 6, fontSize: 11, color: "rgba(255,255,255,0.3)" }}>Tippen zum Schließen</span>
           </div>
         </div>
       )}
@@ -626,6 +631,110 @@ function MaterialFormular({ material, isMobile, onSave, onClose }: any) {
           <button style={{ ...C.btnS, flex: 1 }} onClick={onClose}>Abbrechen</button>
           <button style={{ ...C.btnP, flex: 1, opacity: !f.materialart ? 0.5 : 1 }} onClick={() => { if (f.materialart) onSave(f); }}>Speichern</button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Material Karte mit Fotos ───────────────────────────────────────────────────
+function MaterialKarte({ m, fotos, isMobile, onEdit, onDelete, onFotoUpload, onFotoDelete, onLightbox, uploading }: any) {
+  const [showFotos, setShowFotos] = useState(false);
+
+  // Fotos die zu diesem Material gehören (Typ "Material" oder "Lieferschein")
+  const matFotos = fotos.filter((f: any) => f.typ === "Material" || f.typ === "Lieferschein" || f.typ === "Einbauort");
+
+  return (
+    <div style={{ ...C.card, marginBottom: 10, padding: "14px 16px" }}>
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#222" }}>{m.materialart}</div>
+          <div style={{ fontSize: 12, color: ACCENT, marginTop: 2 }}>{m.menge} {m.einheit}</div>
+        </div>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 8, background: m.status === "verbaut" ? "#e8f5f3" : m.status === "gelagert" ? "#fff3e0" : "#f0f4f3", color: m.status === "verbaut" ? ACCENT : m.status === "gelagert" ? "#BA7517" : "#888", fontWeight: 600 }}>
+            {m.status}
+          </span>
+          <button onClick={onEdit} style={{ padding: "3px 8px", borderRadius: 6, border: "1px solid #eee", background: "#fff", cursor: "pointer", fontSize: 11, color: "#555" }}>✎</button>
+          <button onClick={onDelete} style={{ padding: "3px 8px", borderRadius: 6, border: "none", background: "#E24B4A18", cursor: "pointer", fontSize: 11, color: "#E24B4A" }}>✕</button>
+        </div>
+      </div>
+
+      {/* Details */}
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 8, fontSize: 11, color: "#666", marginBottom: 8 }}>
+        {m.einbauort       && <div><span style={{ color: "#aaa" }}>Einbauort: </span>{m.einbauort}</div>}
+        {m.lv_position     && <div><span style={{ color: "#aaa" }}>LV-Pos: </span>{m.lv_position}</div>}
+        {m.lieferant       && <div><span style={{ color: "#aaa" }}>Lieferant: </span>{m.lieferant}</div>}
+        {m.lieferschein_nr && <div><span style={{ color: "#aaa" }}>LS-Nr: </span>{m.lieferschein_nr}</div>}
+      </div>
+
+      {m.besonderheiten && (
+        <div style={{ marginBottom: 8, padding: "6px 10px", background: "#fff8e1", borderRadius: 8, fontSize: 11, color: "#BA7517" }}>
+          ⚠ {m.besonderheiten}
+        </div>
+      )}
+
+      {/* Lieferschein Foto (aus Material-Formular) */}
+      {m.lieferschein_foto && (
+        <div style={{ marginBottom: 8 }}>
+          <div style={{ fontSize: 10, color: "#aaa", marginBottom: 4 }}>Lieferschein:</div>
+          <img src={m.lieferschein_foto} alt="Lieferschein"
+            style={{ height: 70, borderRadius: 6, border: "1px solid #eee", cursor: "pointer" }}
+            onClick={() => onLightbox({ url: m.lieferschein_foto, typ: "Lieferschein", erstellt_von: m.erstellt_von })} />
+        </div>
+      )}
+
+      {/* Fotos Toggle */}
+      <div style={{ borderTop: "1px solid #f5f5f5", paddingTop: 10, marginTop: 4 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <button onClick={() => setShowFotos(s => !s)}
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12, color: ACCENT, fontWeight: 500, display: "flex", alignItems: "center", gap: 4, padding: 0 }}>
+            📷 Fotos ({matFotos.length}) {showFotos ? "▲" : "▼"}
+          </button>
+
+          {/* Foto Upload direkt beim Material */}
+          <div style={{ display: "flex", gap: 6 }}>
+            <label style={{ padding: "4px 10px", borderRadius: 8, border: "1.5px solid " + ACCENT, background: "#e8f5f3", color: ACCENT, cursor: "pointer", fontSize: 11, fontWeight: 600, opacity: uploading ? 0.6 : 1 }}>
+              📸 Kamera
+              <input type="file" accept="image/*" capture="environment" multiple style={{ display: "none" }}
+                onChange={e => e.target.files && onFotoUpload(e.target.files, "Material")} />
+            </label>
+            <label style={{ padding: "4px 10px", borderRadius: 8, border: "1.5px solid #eee", background: "#fff", color: "#555", cursor: "pointer", fontSize: 11, opacity: uploading ? 0.6 : 1 }}>
+              🖼 Galerie
+              <input type="file" accept="image/*" multiple style={{ display: "none" }}
+                onChange={e => e.target.files && onFotoUpload(e.target.files, "Material")} />
+            </label>
+          </div>
+        </div>
+
+        {/* Foto Galerie */}
+        {showFotos && (
+          <div style={{ marginTop: 10 }}>
+            {matFotos.length === 0 ? (
+              <div style={{ fontSize: 11, color: "#bbb", textAlign: "center", padding: "12px 0" }}>
+                Noch keine Fotos – lade direkt hier hoch
+              </div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr 1fr" : "1fr 1fr 1fr 1fr 1fr", gap: 6 }}>
+                {matFotos.map((f: any) => (
+                  <div key={f.id} style={{ position: "relative", borderRadius: 8, overflow: "hidden", border: "1px solid #eee" }}>
+                    <img src={f.url} alt={f.typ}
+                      style={{ width: "100%", height: 80, objectFit: "cover", display: "block", cursor: "pointer" }}
+                      onClick={() => onLightbox(f)}
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                    <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "rgba(0,0,0,0.5)", padding: "2px 4px" }}>
+                      <div style={{ fontSize: 9, color: "#fff" }}>{f.typ}</div>
+                    </div>
+                    <button onClick={() => onFotoDelete(f.id)}
+                      style={{ position: "absolute", top: 3, right: 3, background: "rgba(0,0,0,0.55)", border: "none", borderRadius: "50%", width: 18, height: 18, cursor: "pointer", color: "#fff", fontSize: 9, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
