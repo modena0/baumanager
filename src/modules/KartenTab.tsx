@@ -17,6 +17,14 @@ const STATUS_ICONS: Record<string, string> = {
   abgeschlossen: "⚫",
 };
 
+// ── Hauptquartier ──────────────────────────────────────────────────────────────
+const HAUPTQUARTIER = {
+  name: "Hauptquartier",
+  adresse: "Zum Windkanal 22, 01109 Dresden",
+  lat: 51.137514,
+  lng: 13.782102,
+};
+
 interface GeoBS {
   id: number;
   name: string;
@@ -38,10 +46,11 @@ export function KartenTab({ data, setTab, setSelectedBS }: any) {
   const leafletMap   = useRef<any>(null);
   const markersRef   = useRef<any[]>([]);
   const fzMarkersRef = useRef<any[]>([]);
+  const hqMarkerRef  = useRef<any>(null);
 
   const [leafletLoaded, setLeafletLoaded] = useState(false);
   const [selectedBS,    setSelected]      = useState<GeoBS|null>(null);
-  const [filter,        setFilter]        = useState({ status: "alle", team: "alle" });
+  const [filter,        setFilter]        = useState({ status: "alle" });
   const [showFahrzeuge, setShowFahrzeuge] = useState(true);
   const [showBS,        setShowBS]        = useState(true);
   const [geocoding,     setGeocoding]     = useState(false);
@@ -70,7 +79,7 @@ export function KartenTab({ data, setTab, setSelectedBS }: any) {
     if (!leafletLoaded || !mapRef.current || leafletMap.current) return;
 
     leafletMap.current = L.map(mapRef.current, {
-      center: [51.05, 13.74], // Dresden
+      center: [HAUPTQUARTIER.lat, HAUPTQUARTIER.lng],
       zoom: 11,
       zoomControl: true,
     });
@@ -88,14 +97,13 @@ export function KartenTab({ data, setTab, setSelectedBS }: any) {
     };
   }, [leafletLoaded]);
 
-  // Marker aktualisieren wenn Daten oder Filter sich ändern
+  // Marker aktualisieren
   useEffect(() => {
     if (!leafletLoaded || !leafletMap.current) return;
     updateMarkers();
   }, [leafletLoaded, data, filter, showFahrzeuge, showBS]);
 
-  function makeIcon(farbe: string, typ: "baustelle" | "fahrzeug") {
-    const emoji = typ === "baustelle" ? "⛏" : "🚛";
+  function makeBSIcon(farbe: string) {
     return L.divIcon({
       className: "",
       html: `<div style="
@@ -104,10 +112,42 @@ export function KartenTab({ data, setTab, setSelectedBS }: any) {
         box-shadow: 0 2px 8px rgba(0,0,0,0.3);
         transform: rotate(-45deg);
         display: flex; align-items: center; justify-content: center;
-      "><span style="transform: rotate(45deg); font-size: 14px;">${emoji}</span></div>`,
+      "><span style="transform: rotate(45deg); font-size: 14px;">⛏</span></div>`,
       iconSize: [36, 36],
       iconAnchor: [18, 36],
       popupAnchor: [0, -36],
+    });
+  }
+
+  function makeFZIcon(farbe: string) {
+    return L.divIcon({
+      className: "",
+      html: `<div style="
+        width: 36px; height: 36px; border-radius: 50% 50% 50% 0;
+        background: ${farbe}; border: 2px solid #fff;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        transform: rotate(-45deg);
+        display: flex; align-items: center; justify-content: center;
+      "><span style="transform: rotate(45deg); font-size: 14px;">🚛</span></div>`,
+      iconSize: [36, 36],
+      iconAnchor: [18, 36],
+      popupAnchor: [0, -36],
+    });
+  }
+
+  function makeHQIcon() {
+    return L.divIcon({
+      className: "",
+      html: `<div style="
+        width: 44px; height: 44px; border-radius: 50%;
+        background: #222; border: 3px solid ${ACCENT};
+        box-shadow: 0 3px 12px rgba(0,0,0,0.4);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 20px;
+      ">🏢</div>`,
+      iconSize: [44, 44],
+      iconAnchor: [22, 22],
+      popupAnchor: [0, -22],
     });
   }
 
@@ -118,10 +158,21 @@ export function KartenTab({ data, setTab, setSelectedBS }: any) {
     // Alte Marker entfernen
     markersRef.current.forEach(m => m.remove());
     fzMarkersRef.current.forEach(m => m.remove());
+    if (hqMarkerRef.current) hqMarkerRef.current.remove();
     markersRef.current = [];
     fzMarkersRef.current = [];
 
-    // Baustellen-Marker
+    // ── Hauptquartier Marker ───────────────────────────────────────────────────
+    hqMarkerRef.current = L.marker([HAUPTQUARTIER.lat, HAUPTQUARTIER.lng], { icon: makeHQIcon(), zIndexOffset: 1000 })
+      .addTo(map)
+      .bindPopup(`
+        <div style="font-family: system-ui; min-width: 160px;">
+          <div style="font-weight: 700; font-size: 14px; margin-bottom: 4px;">🏢 Hauptquartier</div>
+          <div style="font-size: 12px; color: #555;">${HAUPTQUARTIER.adresse}</div>
+        </div>
+      `);
+
+    // ── Baustellen Marker ──────────────────────────────────────────────────────
     if (showBS) {
       const gefiltert = data.baustellen.filter((b: any) => {
         if (!b.lat || !b.lng) return false;
@@ -131,7 +182,7 @@ export function KartenTab({ data, setTab, setSelectedBS }: any) {
 
       gefiltert.forEach((b: any) => {
         const farbe = STATUS_FARBEN[b.status] || "#888";
-        const marker = L.marker([b.lat, b.lng], { icon: makeIcon(farbe, "baustelle") })
+        const marker = L.marker([b.lat, b.lng], { icon: makeBSIcon(farbe) })
           .addTo(map)
           .on("click", () => {
             setSelected({
@@ -144,18 +195,22 @@ export function KartenTab({ data, setTab, setSelectedBS }: any) {
         markersRef.current.push(marker);
       });
 
-      // Karte auf Baustellen zentrieren wenn vorhanden
-      if (gefiltert.length > 0 && gefiltert[0].lat) {
-        const bounds = L.latLngBounds(gefiltert.filter((b: any) => b.lat).map((b: any) => [b.lat, b.lng]));
-        if (bounds.isValid()) map.fitBounds(bounds, { padding: [40, 40] });
+      // Karte auf alle Marker zentrieren (inkl. HQ)
+      const allePunkte = [
+        [HAUPTQUARTIER.lat, HAUPTQUARTIER.lng],
+        ...gefiltert.filter((b: any) => b.lat).map((b: any) => [b.lat, b.lng]),
+      ];
+      if (allePunkte.length > 1) {
+        const bounds = L.latLngBounds(allePunkte);
+        if (bounds.isValid()) map.fitBounds(bounds, { padding: [50, 50] });
       }
     }
 
-    // Fahrzeug-Marker
+    // ── Fahrzeug Marker ────────────────────────────────────────────────────────
     if (showFahrzeuge) {
       data.fahrzeuge.filter((f: any) => f.lat && f.lng).forEach((f: any) => {
         const farbe = f.status === "im Einsatz" ? "#BA7517" : f.status === "Wartung" ? "#E24B4A" : "#378ADD";
-        const marker = L.marker([f.lat, f.lng], { icon: makeIcon(farbe, "fahrzeug") })
+        const marker = L.marker([f.lat, f.lng], { icon: makeFZIcon(farbe) })
           .addTo(map)
           .bindTooltip(`<b>${f.name}</b><br>${f.status}<br>${f.fahrer || ""}`, { direction: "top" });
         fzMarkersRef.current.push(marker);
@@ -163,7 +218,7 @@ export function KartenTab({ data, setTab, setSelectedBS }: any) {
     }
   }
 
-  // Geocoding – Adresse zu Koordinaten
+  // Geocoding – alle Baustellen ohne Koordinaten
   async function geocodeAlle() {
     setGeocoding(true);
     const ohneKoords = data.baustellen.filter((b: any) => b.ort && (!b.lat || !b.lng));
@@ -189,21 +244,19 @@ export function KartenTab({ data, setTab, setSelectedBS }: any) {
           await supabase.from("baustellen").update({ lat, lng }).eq("id", b.id);
           ok++;
         }
-        await new Promise(r => setTimeout(r, 1100)); // Nominatim Rate Limit
+        await new Promise(r => setTimeout(r, 1100));
       } catch { /* ignorieren */ }
     }
 
     setGeocodingMsg(`✓ ${ok} von ${ohneKoords.length} Baustellen geocodiert`);
     setGeocoding(false);
     setTimeout(() => setGeocodingMsg(""), 4000);
-    window.location.reload(); // Daten neu laden
+    window.location.reload();
   }
 
-  // Baustellen ohne Koordinaten
   const ohneKoords = data.baustellen.filter((b: any) => b.ort && (!b.lat || !b.lng));
-  const mitKoords  = data.baustellen.filter((b: any) => b.lat && b.lng);
 
-  // Detail-Panel: Aufgaben, Team, Termine
+  // Detail-Panel Hilfsfunktionen
   const getTeam = (bs: GeoBS) =>
     bs.mitarbeiter.map((id: number) => data.mitarbeiter.find((m: any) => m.id === id)).filter(Boolean);
   const getTermine = (bs: GeoBS) =>
@@ -221,11 +274,10 @@ export function KartenTab({ data, setTab, setSelectedBS }: any) {
   };
 
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column", gap: 0, position: "relative" }}>
+    <div style={{ height: "100%", display: "flex", flexDirection: "column", gap: 0 }}>
 
       {/* Toolbar */}
       <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap", alignItems: "center" }}>
-
         {/* Status Filter */}
         <div style={{ display: "flex", gap: 4 }}>
           {["alle", "laufend", "geplant", "abgeschlossen"].map(s => (
@@ -253,14 +305,12 @@ export function KartenTab({ data, setTab, setSelectedBS }: any) {
         </div>
       </div>
 
-      {/* Geocoding Status */}
+      {/* Status Meldungen */}
       {geocodingMsg && (
         <div style={{ padding: "6px 12px", background: "#e8f5f3", borderRadius: 8, fontSize: 12, color: ACCENT, marginBottom: 8 }}>
           {geocodingMsg}
         </div>
       )}
-
-      {/* Warnung fehlende Koordinaten */}
       {ohneKoords.length > 0 && (
         <div style={{ padding: "6px 12px", background: "#fff8e1", borderRadius: 8, fontSize: 11, color: "#BA7517", marginBottom: 8 }}>
           ⚠ {ohneKoords.length} Baustelle{ohneKoords.length > 1 ? "n" : ""} ohne Koordinaten – klicke "Adressen geocoden"
@@ -268,7 +318,7 @@ export function KartenTab({ data, setTab, setSelectedBS }: any) {
       )}
 
       {/* Karte + Detail Panel */}
-      <div style={{ flex: 1, display: "flex", gap: 12, minHeight: 0, position: "relative" }}>
+      <div style={{ flex: 1, display: "flex", gap: 12, minHeight: 0 }}>
 
         {/* Karte */}
         <div style={{ flex: 1, position: "relative", borderRadius: 16, overflow: "hidden", boxShadow: "0 2px 12px rgba(0,0,0,0.10)" }}>
@@ -285,9 +335,12 @@ export function KartenTab({ data, setTab, setSelectedBS }: any) {
 
           {/* Stats Overlay */}
           <div style={{ position: "absolute", bottom: 16, left: 16, background: "rgba(255,255,255,0.92)", borderRadius: 10, padding: "8px 12px", fontSize: 11, color: "#555", boxShadow: "0 2px 8px rgba(0,0,0,0.15)", zIndex: 1000 }}>
-            <div>🟢 {data.baustellen.filter((b: any) => b.status === "laufend").length} laufend</div>
-            <div>🔵 {data.baustellen.filter((b: any) => b.status === "geplant").length} geplant</div>
-            <div>🚛 {data.fahrzeuge.filter((f: any) => f.status === "im Einsatz").length} Fahrzeuge im Einsatz</div>
+            <div>🏢 Zum Windkanal 22 – Hauptquartier</div>
+            <div style={{ marginTop: 4, borderTop: "1px solid #eee", paddingTop: 4 }}>
+              <div>🟢 {data.baustellen.filter((b: any) => b.status === "laufend").length} laufend</div>
+              <div>🔵 {data.baustellen.filter((b: any) => b.status === "geplant").length} geplant</div>
+              <div>🚛 {data.fahrzeuge.filter((f: any) => f.status === "im Einsatz").length} Fahrzeuge im Einsatz</div>
+            </div>
           </div>
         </div>
 
@@ -295,7 +348,6 @@ export function KartenTab({ data, setTab, setSelectedBS }: any) {
         {selectedBS && (
           <div style={{ width: 300, background: "#fff", borderRadius: 16, boxShadow: "0 2px 12px rgba(0,0,0,0.10)", overflowY: "auto", padding: "16px", flexShrink: 0 }}>
 
-            {/* Header */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12, paddingBottom: 12, borderBottom: "1px solid #f5f5f5" }}>
               <div>
                 <div style={{ fontSize: 15, fontWeight: 700, color: "#222" }}>{selectedBS.name}</div>
@@ -376,11 +428,7 @@ export function KartenTab({ data, setTab, setSelectedBS }: any) {
             )}
 
             {/* Navigation Button */}
-            <button
-              onClick={() => {
-                if (setSelectedBS) setSelectedBS(selectedBS.id);
-                if (setTab) setTab(3); // Baustellen Tab
-              }}
+            <button onClick={() => { if (setSelectedBS) setSelectedBS(selectedBS.id); if (setTab) setTab(3); }}
               style={{ ...C.btnP, width: "100%", fontSize: 13, marginTop: 4 }}>
               → Zur Baustelle
             </button>
@@ -389,7 +437,8 @@ export function KartenTab({ data, setTab, setSelectedBS }: any) {
       </div>
 
       {/* Legende */}
-      <div style={{ display: "flex", gap: 12, marginTop: 8, fontSize: 11, color: "#888", flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 12, marginTop: 8, fontSize: 11, color: "#888", flexWrap: "wrap", alignItems: "center" }}>
+        <span>🏢 Hauptquartier</span>
         <span>⛏ 🟢 Laufend</span>
         <span>⛏ 🔵 Geplant</span>
         <span>⛏ ⚫ Abgeschlossen</span>
