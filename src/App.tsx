@@ -18,11 +18,11 @@ import { ROLLE_TABS, KANN } from "./rollen";
 import type { Rolle } from "./rollen";
 import { TeamplanungTab } from "./modules/TeamplanungTab";
 import { BautagebuchTab } from "./modules/BautagebuchTab";
-
+import { DokumentAnalyseTab } from "./modules/DokumentAnalyseTab";
 
 const MODULE_MAP: Record<number, ComponentType<any>> = {
   0: Dashboard, 1: MitarbeiterTab, 2: ZuordnungsBoard, 3: BaustellenTab,
-  4: KalenderTab, 5: LagerTab, 6: FuhrparkTab, 7: KITab, 8: TeamplanungTab, 9: BautagebuchTab
+  4: KalenderTab, 5: LagerTab, 6: FuhrparkTab, 7: KITab, 8: TeamplanungTab, 9: BautagebuchTab, 10: DokumentAnalyseTab,
 };
 
 // ── Hilfsfunktionen ────────────────────────────────────────────────────────────

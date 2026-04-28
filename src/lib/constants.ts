@@ -5,6 +5,7 @@ export const NAV = [
   { id: 0, label: "Dashboard",   icon: "⊞" },
   { id: 8, label: "Teamplanung", icon: "👷" },
   { id: 9, label: "Bautagebuch", icon: "📋" },
+  { id: 10, label: "Analyse", icon: "🤖" },
   { id: 3, label: "Baustellen",  icon: "⛏" },
   { id: 4, label: "Kalender",    icon: "▦" },
   { id: 6, label: "Fuhrpark",    icon: "🚛" },
