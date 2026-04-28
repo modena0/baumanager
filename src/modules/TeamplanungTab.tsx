@@ -8,9 +8,9 @@ const SPEZIALISIERUNGEN = ["FGU-Bau", "Tiefbau", "Asphalt", "Straßenbau", "LSA"
 interface Team {
   id?: number;
   datum: string;
-  datum_bis?: string;
+  datum_bis?: string | null;
   ist_dauerhaft: boolean;
-  spezialisierung?: string;
+  spezialisierung?: string | null;
   team_name: string;
   farbe: string;
   mitarbeiter: number[];
@@ -89,8 +89,14 @@ export function TeamplanungTab({ data, currentUser, rolle }: any) {
   }
 
   async function saveTeam(team: Team) {
-    const p = { ...team, erstellt_von: currentUser?.name || "" };
-    if (!p.datum) p.datum = datum;
+    const p = {
+  ...team,
+  erstellt_von: currentUser?.name || "",
+  datum: team.datum || datum,
+  datum_bis: team.datum_bis || null,
+  ist_dauerhaft: team.ist_dauerhaft || false,
+  spezialisierung: team.spezialisierung || null,
+};
     if (team.id) {
       await supabase.from("teamplanung").update(p).eq("id", team.id);
       setTeams(ts => ts.map(t => t.id === team.id ? { ...p, id: team.id } : t));
