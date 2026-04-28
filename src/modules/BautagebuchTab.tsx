@@ -6,7 +6,6 @@ const EINHEITEN = ["m³", "m²", "m", "t", "kg", "Stück", "l", "to", "Palette"]
 const MATERIAL_STATUS = ["geliefert", "verbaut", "gelagert"];
 const FOTO_TYPEN = ["allgemein", "Material", "Lieferschein", "Einbauort", "Schaden", "Abnahme"];
 
-// ── Wetter-Übersetzung ─────────────────────────────────────────────────────────
 const WETTER_DE: Record<string, string> = {
   "Sunny": "Sonnig", "Clear": "Klar", "Partly cloudy": "Teilweise bewölkt",
   "Cloudy": "Bewölkt", "Overcast": "Bedeckt", "Mist": "Neblig",
@@ -16,12 +15,8 @@ const WETTER_DE: Record<string, string> = {
   "Moderate snow": "Mäßiger Schnee", "Heavy snow": "Starker Schnee",
   "Thunder": "Gewitter", "Thunderstorm": "Gewitter",
   "Patchy light rain": "Leichter Regen", "Light drizzle": "Nieselregen",
-  "Freezing drizzle": "Gefrierender Nieselregen",
-  "Blizzard": "Schneesturm", "Ice pellets": "Eisregen",
   "Light rain shower": "Leichter Regenschauer",
   "Moderate or heavy rain shower": "Starker Regenschauer",
-  "Patchy light snow": "Leichter Schnee",
-  "Patchy moderate snow": "Mäßiger Schnee",
 };
 function wetterDE(en: string): string { return WETTER_DE[en] || en; }
 
@@ -71,44 +66,86 @@ interface Foto {
   erstellt_von?: string;
 }
 
+interface ChatNachricht {
+  id?: number;
+  baustelle_id: number;
+  datum: string;
+  text?: string;
+  foto_url?: string;
+  absender: string;
+  absender_rolle?: string;
+  typ: string;
+  ki_verarbeitet: boolean;
+  created_at?: string;
+}
+
 export function BautagebuchTab({ data, currentUser, rolle }: any) {
   const [selectedBS,  setSelectedBS]  = useState<number|null>(null);
   const [datum,       setDatum]       = useState(new Date().toISOString().split("T")[0]);
   const [eintrag,     setEintrag]     = useState<Eintrag|null>(null);
   const [materialien, setMaterialien] = useState<Material[]>([]);
   const [fotos,       setFotos]       = useState<Foto[]>([]);
+  const [nachrichten, setNachrichten] = useState<ChatNachricht[]>([]);
   const [loading,     setLoading]     = useState(false);
-  const [activeTab,   setActiveTab]   = useState<"tageslog"|"material"|"fotos"|"uebersicht">("tageslog");
+  const [activeTab,   setActiveTab]   = useState<"chat"|"tageslog"|"material"|"fotos"|"uebersicht">("chat");
   const [showMatForm, setShowMatForm] = useState(false);
   const [editMat,     setEditMat]     = useState<Material|null>(null);
   const [wetterLoad,  setWetterLoad]  = useState(false);
   const [fotoUpload,  setFotoUpload]  = useState(false);
   const [selectedTyp, setSelectedTyp] = useState<string|null>(null);
-  const [lightbox,    setLightbox]    = useState<Foto|null>(null);
+  const [lightbox,    setLightbox]    = useState<any|null>(null);
+  const [kiLaeuft,    setKiLaeuft]   = useState(false);
 
   const isMobile = window.innerWidth < 768;
-
   const meineBS = rolle === "baustellen_leitung"
     ? data.baustellen.filter((b: any) => b.mitarbeiter?.includes(currentUser?.id))
     : data.baustellen.filter((b: any) => b.status !== "abgeschlossen");
 
-  useEffect(() => { if (selectedBS) loadEintrag(); }, [selectedBS, datum]);
+  useEffect(() => { if (selectedBS) loadAlles(); }, [selectedBS, datum]);
 
-  async function loadEintrag() {
+  // Automatischer Refresh alle 10 Sekunden für Chat
+  useEffect(() => {
+    if (!selectedBS || activeTab !== "chat") return;
+    const interval = setInterval(() => ladeChatNachrichten(), 10000);
+    return () => clearInterval(interval);
+  }, [selectedBS, datum, activeTab]);
+
+  // KI-Verarbeitung stündlich
+  useEffect(() => {
     if (!selectedBS) return;
+    const interval = setInterval(() => kiVerarbeitung(), 60 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [selectedBS, datum]);
+
+  async function loadAlles() {
     setLoading(true);
+    await Promise.all([ladeEintrag(), ladeMaterial(), ladeFotos(), ladeChatNachrichten()]);
+    setLoading(false);
+  }
+
+  async function ladeEintrag() {
     const { data: e } = await supabase.from("bautagebuch_eintraege")
-      .select("*").eq("baustelle_id", selectedBS).eq("datum", datum).maybeSingle();
+      .select("*").eq("baustelle_id", selectedBS!).eq("datum", datum).maybeSingle();
     if (e) {
       setEintrag({ ...e, mitarbeiter_anwesend: Array.isArray(e.mitarbeiter_anwesend) ? e.mitarbeiter_anwesend.map(Number) : [], geraete: Array.isArray(e.geraete) ? e.geraete : [] });
     } else {
-      setEintrag({ baustelle_id: selectedBS, datum, mitarbeiter_anwesend: [], geraete: [] });
+      setEintrag({ baustelle_id: selectedBS!, datum, mitarbeiter_anwesend: [], geraete: [] });
     }
-    const { data: m } = await supabase.from("bautagebuch_material").select("*").eq("baustelle_id", selectedBS).eq("datum", datum).order("id");
+  }
+
+  async function ladeMaterial() {
+    const { data: m } = await supabase.from("bautagebuch_material").select("*").eq("baustelle_id", selectedBS!).eq("datum", datum).order("id");
     setMaterialien(m || []);
-    const { data: f } = await supabase.from("bautagebuch_fotos").select("*").eq("baustelle_id", selectedBS).eq("datum", datum).order("id");
+  }
+
+  async function ladeFotos() {
+    const { data: f } = await supabase.from("bautagebuch_fotos").select("*").eq("baustelle_id", selectedBS!).eq("datum", datum).order("id");
     setFotos(f || []);
-    setLoading(false);
+  }
+
+  async function ladeChatNachrichten() {
+    const { data: n } = await supabase.from("chat_nachrichten").select("*").eq("baustelle_id", selectedBS!).eq("datum", datum).order("created_at");
+    setNachrichten(n || []);
   }
 
   async function saveEintrag(e: Eintrag) {
@@ -122,7 +159,6 @@ export function BautagebuchTab({ data, currentUser, rolle }: any) {
     }
   }
 
-  // Sicherstellen dass Eintrag existiert und ID zurückgeben
   async function ensureEintrag(): Promise<number|null> {
     if (eintrag?.id) return eintrag.id;
     const p = { baustelle_id: selectedBS!, datum, mitarbeiter_anwesend: [], geraete: [], erstellt_von: currentUser?.name || "" };
@@ -176,36 +212,25 @@ export function BautagebuchTab({ data, currentUser, rolle }: any) {
     setMaterialien(ms => ms.filter(m => m.id !== id));
   }
 
-  // ── Foto Upload – Storage + Fallback ──────────────────────────────────────────
   async function fotosHochladen(files: FileList, typ: string) {
     if (!files.length || !selectedBS) return;
     setFotoUpload(true);
-
     const eintragsId = await ensureEintrag();
-
     for (const file of Array.from(files)) {
       let url = "";
-
-      // Versuche Supabase Storage
       const fileName = `bautagebuch/${selectedBS}/${datum}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from("dokumente").upload(fileName, file, { upsert: true });
-
+      const { data: uploadData, error: uploadError } = await supabase.storage.from("dokumente").upload(fileName, file, { upsert: true });
       if (!uploadError && uploadData) {
         const { data: urlData } = supabase.storage.from("dokumente").getPublicUrl(fileName);
         url = urlData.publicUrl;
       } else {
-        // Fallback: komprimiertes Base64
         url = await komprimieren(file, 800, 0.7);
       }
-
       if (!url) continue;
-
       const foto: any = { baustelle_id: selectedBS, datum, url, typ, erstellt_von: currentUser?.name || "" };
       if (eintragsId) foto.eintrag_id = eintragsId;
-
-      const { data: neu, error } = await supabase.from("bautagebuch_fotos").insert([foto]).select().single();
-      if (!error && neu) setFotos(fs => [...fs, { ...foto, id: neu.id }]);
+      const { data: neu } = await supabase.from("bautagebuch_fotos").insert([foto]).select().single();
+      if (neu) setFotos(fs => [...fs, { ...foto, id: neu.id }]);
     }
     setFotoUpload(false);
     setSelectedTyp(null);
@@ -236,6 +261,87 @@ export function BautagebuchTab({ data, currentUser, rolle }: any) {
     setFotos(fs => fs.filter(f => f.id !== id));
   }
 
+  // ── KI Verarbeitung ────────────────────────────────────────────────────────────
+  async function kiVerarbeitung() {
+    if (!selectedBS || kiLaeuft) return;
+    const unverarbeitet = nachrichten.filter(n => !n.ki_verarbeitet);
+    if (unverarbeitet.length === 0) return;
+    setKiLaeuft(true);
+
+    const bs = data.baustellen.find((b: any) => b.id === selectedBS);
+    const prompt = `Du bist ein Bautagebuch-Assistent. Analysiere folgende Chat-Nachrichten von der Baustelle "${bs?.name}" für das Datum ${datum} und extrahiere strukturierte Informationen.
+
+CHAT-NACHRICHTEN:
+${unverarbeitet.map(n => `[${n.absender} (${n.absender_rolle || "Mitarbeiter"}), ${new Date(n.created_at || "").toLocaleTimeString("de-DE")}]: ${n.text || "[Foto]"}`).join("\n")}
+
+Extrahiere aus den Nachrichten folgende Informationen als JSON:
+{
+  "notizen": "Zusammenfassung der ausgeführten Arbeiten",
+  "besonderheiten": "Probleme, Verzögerungen, besondere Ereignisse oder null",
+  "materialien": [
+    { "materialart": "Name", "menge": 0, "einheit": "m³", "einbauort": "Ort", "status": "verbaut" }
+  ],
+  "arbeitsbeginn": "HH:MM oder null",
+  "arbeitsende": "HH:MM oder null"
+}
+
+Antworte NUR mit dem JSON, kein anderer Text.`;
+
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 1000, messages: [{ role: "user", content: prompt }] }),
+      });
+      const d = await res.json();
+      const text = d.content?.[0]?.text;
+      if (!text) throw new Error("Keine Antwort");
+
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error("Kein JSON");
+      const ki = JSON.parse(jsonMatch[0]);
+
+      // Tageseintrag aktualisieren
+      const eintragsId = await ensureEintrag();
+      if (eintragsId && eintrag) {
+        const updated = {
+          ...eintrag,
+          notizen: eintrag.notizen ? eintrag.notizen + "\n\n[KI ergänzt]: " + ki.notizen : ki.notizen,
+          besonderheiten: ki.besonderheiten || eintrag.besonderheiten,
+          arbeitsbeginn: ki.arbeitsbeginn || eintrag.arbeitsbeginn,
+          arbeitsende: ki.arbeitsende || eintrag.arbeitsende,
+        };
+        await supabase.from("bautagebuch_eintraege").update(updated).eq("id", eintragsId);
+        setEintrag(updated);
+      }
+
+      // Materialien aus Chat hinzufügen
+      if (ki.materialien && Array.isArray(ki.materialien)) {
+        const eintragsId2 = await ensureEintrag();
+        for (const m of ki.materialien) {
+          if (!m.materialart) continue;
+          const p: any = { baustelle_id: selectedBS, datum, materialart: m.materialart, status: m.status || "verbaut", erstellt_von: "KI-Assistent" };
+          if (eintragsId2) p.eintrag_id = eintragsId2;
+          if (m.menge) p.menge = m.menge;
+          if (m.einheit) p.einheit = m.einheit;
+          if (m.einbauort) p.einbauort = m.einbauort;
+          const { data: neu } = await supabase.from("bautagebuch_material").insert([p]).select().single();
+          if (neu) setMaterialien(ms => [...ms, { ...p, id: neu.id }]);
+        }
+      }
+
+      // Nachrichten als verarbeitet markieren
+      for (const n of unverarbeitet) {
+        if (n.id) await supabase.from("chat_nachrichten").update({ ki_verarbeitet: true }).eq("id", n.id);
+      }
+      setNachrichten(ns => ns.map(n => unverarbeitet.find(u => u.id === n.id) ? { ...n, ki_verarbeitet: true } : n));
+
+    } catch (e: any) {
+      console.error("KI Fehler:", e);
+    }
+    setKiLaeuft(false);
+  }
+
   async function exportExcel() {
     if (!selectedBS) return;
     const { data: alleEintraege } = await supabase.from("bautagebuch_eintraege").select("*").eq("baustelle_id", selectedBS).order("datum");
@@ -253,9 +359,7 @@ export function BautagebuchTab({ data, currentUser, rolle }: any) {
     const csvContent = "\uFEFF" + csvRows.map(r => r.map(c => `"${(c || "").toString().replace(/"/g, '""')}"`).join(";")).join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `Bautagebuch_${bs?.name}_${datum}.csv`;
-    a.click();
+    a.href = URL.createObjectURL(blob); a.download = `Bautagebuch_${bs?.name}_${datum}.csv`; a.click();
   }
 
   // ── BAUSTELLEN AUSWAHL ────────────────────────────────────────────────────────
@@ -281,11 +385,11 @@ export function BautagebuchTab({ data, currentUser, rolle }: any) {
   const bs = data.baustellen.find((b: any) => b.id === selectedBS);
 
   return (
-    <div>
+    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8, flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <button onClick={() => { setSelectedBS(null); setEintrag(null); setMaterialien([]); setFotos([]); }}
+          <button onClick={() => { setSelectedBS(null); setEintrag(null); setMaterialien([]); setFotos([]); setNachrichten([]); }}
             style={{ padding: "6px 12px", borderRadius: 8, border: "1.5px solid #eee", background: "#fff", cursor: "pointer", fontSize: 12, color: "#555" }}>
             ← Zurück
           </button>
@@ -302,22 +406,39 @@ export function BautagebuchTab({ data, currentUser, rolle }: any) {
       </div>
 
       {/* Tab Navigation */}
-      <div style={{ display: "flex", gap: 4, marginBottom: 16, background: "#f0f4f3", borderRadius: 12, padding: 4, overflowX: "auto" }}>
+      <div style={{ display: "flex", gap: 4, marginBottom: 12, background: "#f0f4f3", borderRadius: 12, padding: 4, overflowX: "auto", flexShrink: 0 }}>
         {[
+          { key: "chat",       label: `💬 Chat (${nachrichten.length})` },
           { key: "tageslog",   label: "📝 Tageslog" },
           { key: "material",   label: `📦 Material (${materialien.length})` },
           { key: "fotos",      label: `📷 Fotos (${fotos.length})` },
           { key: "uebersicht", label: "📊 Übersicht" },
         ].map(t => (
           <button key={t.key} onClick={() => setActiveTab(t.key as any)}
-            style={{ flex: "0 0 auto", padding: "8px 16px", borderRadius: 8, border: "none", background: activeTab === t.key ? "#fff" : "transparent", cursor: "pointer", fontSize: 12, fontWeight: activeTab === t.key ? 600 : 400, color: activeTab === t.key ? ACCENT : "#888", boxShadow: activeTab === t.key ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }}>
+            style={{ flex: "0 0 auto", padding: "8px 14px", borderRadius: 8, border: "none", background: activeTab === t.key ? "#fff" : "transparent", cursor: "pointer", fontSize: 12, fontWeight: activeTab === t.key ? 600 : 400, color: activeTab === t.key ? ACCENT : "#888", boxShadow: activeTab === t.key ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }}>
             {t.label}
           </button>
         ))}
       </div>
 
       {loading ? <div style={{ textAlign: "center", color: "#bbb", padding: 32 }}>Lädt...</div> : (
-        <>
+        <div style={{ flex: 1, minHeight: 0, overflow: activeTab === "chat" ? "hidden" : "auto" }}>
+
+          {/* ── CHAT ─────────────────────────────────────────────────────── */}
+          {activeTab === "chat" && (
+            <ChatTab
+              bsId={selectedBS}
+              datum={datum}
+              nachrichten={nachrichten}
+              setNachrichten={setNachrichten}
+              currentUser={currentUser}
+              rolle={rolle}
+              kiLaeuft={kiLaeuft}
+              onKiVerarbeitung={kiVerarbeitung}
+              komprimieren={komprimieren}
+            />
+          )}
+
           {/* ── TAGESLOG ─────────────────────────────────────────────────── */}
           {activeTab === "tageslog" && eintrag && (
             <TageslogForm eintrag={eintrag} setEintrag={setEintrag} data={data} onSave={saveEintrag} onWetter={wetterLaden} wetterLoad={wetterLoad} isMobile={isMobile} />
@@ -337,18 +458,10 @@ export function BautagebuchTab({ data, currentUser, rolle }: any) {
                 </div>
               )}
               {materialien.map(m => (
-                <MaterialKarte
-                  key={m.id}
-                  m={m}
-                  fotos={fotos}
-                  isMobile={isMobile}
+                <MaterialKarte key={m.id} m={m} fotos={fotos} isMobile={isMobile}
                   onEdit={() => { setEditMat(m); setShowMatForm(true); }}
                   onDelete={() => deleteMaterial(m.id!)}
-                  onFotoUpload={fotosHochladen}
-                  onFotoDelete={deleteFoto}
-                  onLightbox={setLightbox}
-                  uploading={fotoUpload}
-                />
+                  onFotoUpload={fotosHochladen} onFotoDelete={deleteFoto} onLightbox={setLightbox} uploading={fotoUpload} />
               ))}
             </div>
           )}
@@ -356,11 +469,8 @@ export function BautagebuchTab({ data, currentUser, rolle }: any) {
           {/* ── FOTOS ────────────────────────────────────────────────────── */}
           {activeTab === "fotos" && (
             <div>
-              {/* Upload Bereich */}
               <div style={{ ...C.card, marginBottom: 16, padding: "16px" }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: "#222", marginBottom: 12 }}>📷 Fotos hochladen</div>
-
-                {/* Typ auswählen */}
                 <div style={{ marginBottom: 12 }}>
                   <div style={{ fontSize: 11, color: "#888", marginBottom: 6 }}>1. Kategorie wählen:</div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -372,80 +482,59 @@ export function BautagebuchTab({ data, currentUser, rolle }: any) {
                     ))}
                   </div>
                 </div>
-
-                {/* Upload Buttons – nur wenn Typ gewählt */}
                 {selectedTyp && (
                   <div>
-                    <div style={{ fontSize: 11, color: "#888", marginBottom: 8 }}>2. Fotos auswählen (Kamera oder Galerie, mehrere möglich):</div>
+                    <div style={{ fontSize: 11, color: "#888", marginBottom: 8 }}>2. Fotos auswählen:</div>
                     <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-
-                      {/* Kamera */}
                       <label style={{ ...C.btnP, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, opacity: fotoUpload ? 0.6 : 1 }}>
                         📸 Kamera
-                        <input type="file" accept="image/*" capture="environment" multiple style={{ display: "none" }}
-                          onChange={e => e.target.files && fotosHochladen(e.target.files, selectedTyp)} />
+                        <input type="file" accept="image/*" capture="environment" multiple style={{ display: "none" }} onChange={e => e.target.files && fotosHochladen(e.target.files, selectedTyp)} />
                       </label>
-
-                      {/* Galerie */}
                       <label style={{ ...C.btnS, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, opacity: fotoUpload ? 0.6 : 1 }}>
                         🖼 Aus Galerie
-                        <input type="file" accept="image/*" multiple style={{ display: "none" }}
-                          onChange={e => e.target.files && fotosHochladen(e.target.files, selectedTyp)} />
+                        <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={e => e.target.files && fotosHochladen(e.target.files, selectedTyp)} />
                       </label>
                     </div>
                     {fotoUpload && <div style={{ fontSize: 12, color: ACCENT, marginTop: 8 }}>⏳ Fotos werden hochgeladen...</div>}
                   </div>
                 )}
               </div>
-
-              {/* Foto Galerie */}
               {fotos.length === 0 ? (
                 <div style={{ ...C.card, textAlign: "center", padding: 32, color: "#bbb" }}>
                   <div style={{ fontSize: 32, marginBottom: 8 }}>📷</div>
                   <div>Noch keine Fotos für heute</div>
-                  <div style={{ fontSize: 11, marginTop: 4 }}>Wähle eine Kategorie oben und lade Fotos hoch</div>
                 </div>
               ) : (
-                <>
-                  {/* Fotos nach Typ gruppiert */}
-                  {FOTO_TYPEN.filter(typ => fotos.some(f => f.typ === typ)).map(typ => (
-                    <div key={typ} style={{ marginBottom: 20 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: "#888", marginBottom: 8, textTransform: "uppercase" as any }}>
-                        {typ} ({fotos.filter(f => f.typ === typ).length})
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 10 }}>
-                        {fotos.filter(f => f.typ === typ).map(f => (
-                          <div key={f.id} style={{ borderRadius: 10, overflow: "hidden", border: "1px solid #eee", position: "relative", background: "#f8f8f8" }}>
-                            <div
-                              onClick={() => setLightbox(f)}
-                              style={{ cursor: "pointer", width: "100%", height: 130, overflow: "hidden" }}>
-                              <img
-                                src={f.url}
-                                alt={f.typ}
-                                style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", pointerEvents: "none" }}
-                                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                              />
-                            </div>
-                            <div style={{ padding: "6px 8px" }}>
-                              <div style={{ fontSize: 10, color: "#aaa" }}>{f.erstellt_von}</div>
-                            </div>
-                            <button onClick={e => { e.stopPropagation(); deleteFoto(f.id!); }}
-                              style={{ position: "absolute", top: 6, right: 6, background: "rgba(0,0,0,0.55)", border: "none", borderRadius: "50%", width: 24, height: 24, cursor: "pointer", color: "#fff", fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                              ✕
-                            </button>
-                          </div>
-                        ))}
-                      </div>
+                FOTO_TYPEN.filter(typ => fotos.some(f => f.typ === typ)).map(typ => (
+                  <div key={typ} style={{ marginBottom: 20 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "#888", marginBottom: 8, textTransform: "uppercase" as any }}>
+                      {typ} ({fotos.filter(f => f.typ === typ).length})
                     </div>
-                  ))}
-                </>
+                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 10 }}>
+                      {fotos.filter(f => f.typ === typ).map(f => (
+                        <div key={f.id} style={{ borderRadius: 10, overflow: "hidden", border: "1px solid #eee", position: "relative", background: "#f8f8f8" }}>
+                          <div onClick={() => setLightbox(f)} style={{ cursor: "pointer", width: "100%", height: 130, overflow: "hidden" }}>
+                            <img src={f.url} alt={f.typ} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", pointerEvents: "none" }} onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                          </div>
+                          <div style={{ padding: "6px 8px" }}>
+                            <div style={{ fontSize: 10, color: "#aaa" }}>{f.erstellt_von}</div>
+                          </div>
+                          <button onClick={e => { e.stopPropagation(); deleteFoto(f.id!); }}
+                            style={{ position: "absolute", top: 6, right: 6, background: "rgba(0,0,0,0.55)", border: "none", borderRadius: "50%", width: 24, height: 24, cursor: "pointer", color: "#fff", fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))
               )}
             </div>
           )}
 
           {/* ── ÜBERSICHT ────────────────────────────────────────────────── */}
           {activeTab === "uebersicht" && <UebersichtTab bsId={selectedBS} />}
-        </>
+        </div>
       )}
 
       {/* Material Modal */}
@@ -455,31 +544,209 @@ export function BautagebuchTab({ data, currentUser, rolle }: any) {
 
       {/* Lightbox */}
       {lightbox && (
-        <div
-          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.92)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", zIndex: 99999, cursor: "zoom-out" }}
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.92)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", zIndex: 99999, cursor: "zoom-out" }}
           onClick={() => setLightbox(null)}>
-          {/* Schließen Button oben rechts */}
-          <button
-            onClick={e => { e.stopPropagation(); setLightbox(null); }}
+          <button onClick={e => { e.stopPropagation(); setLightbox(null); }}
             style={{ position: "fixed", top: 16, right: 16, background: "rgba(255,255,255,0.15)", border: "none", borderRadius: "50%", width: 44, height: 44, cursor: "pointer", color: "#fff", fontSize: 22, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100000 }}>
             ✕
           </button>
-          {/* Bild */}
-          <img
-            src={lightbox.url}
-            alt={lightbox.typ}
-            onClick={e => e.stopPropagation()}
-            style={{ maxWidth: "95vw", maxHeight: "85vh", objectFit: "contain", borderRadius: 8, boxShadow: "0 4px 32px rgba(0,0,0,0.5)", cursor: "default" }}
-            onError={(e) => { (e.target as HTMLImageElement).src = ""; }}
-          />
-          {/* Info unten */}
+          <img src={lightbox.url} alt={lightbox.typ} onClick={e => e.stopPropagation()}
+            style={{ maxWidth: "95vw", maxHeight: "85vh", objectFit: "contain", borderRadius: 8, boxShadow: "0 4px 32px rgba(0,0,0,0.5)", cursor: "default" }} />
           <div style={{ marginTop: 14, textAlign: "center", color: "rgba(255,255,255,0.6)", fontSize: 12 }}>
             <span style={{ background: "rgba(255,255,255,0.1)", padding: "3px 10px", borderRadius: 8, marginRight: 8 }}>{lightbox.typ}</span>
             {lightbox.erstellt_von && <span>{lightbox.erstellt_von}</span>}
-            <span style={{ display: "block", marginTop: 6, fontSize: 11, color: "rgba(255,255,255,0.3)" }}>Tippen zum Schließen</span>
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Chat Tab ───────────────────────────────────────────────────────────────────
+function ChatTab({ bsId, datum, nachrichten, setNachrichten, currentUser, rolle, kiLaeuft, onKiVerarbeitung, komprimieren }: any) {
+  const [text,        setText]        = useState("");
+  const [sending,     setSending]     = useState(false);
+  const [fotoSending, setFotoSending] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  const isMobile = window.innerWidth < 768;
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [nachrichten]);
+
+  const unverarbeitet = nachrichten.filter((n: any) => !n.ki_verarbeitet).length;
+
+  async function sendText() {
+    if (!text.trim() || sending) return;
+    setSending(true);
+    const n: ChatNachricht = {
+      baustelle_id: bsId,
+      datum,
+      text: text.trim(),
+      absender: currentUser?.name || "Unbekannt",
+      absender_rolle: rolle,
+      typ: "text",
+      ki_verarbeitet: false,
+    };
+    const { data: neu } = await supabase.from("chat_nachrichten").insert([n]).select().single();
+    if (neu) setNachrichten((ns: any[]) => [...ns, { ...n, id: neu.id, created_at: neu.created_at }]);
+    setText("");
+    setSending(false);
+  }
+
+  async function sendFoto(files: FileList, capture: boolean) {
+    if (!files.length) return;
+    setFotoSending(true);
+    for (const file of Array.from(files)) {
+      // Foto komprimieren
+      const url = await komprimieren(file, 800, 0.7);
+
+      // Versuche Storage Upload
+      const fileName = `chat/${bsId}/${datum}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+      const { data: uploadData, error } = await supabase.storage.from("dokumente").upload(fileName, file, { upsert: true });
+      const fotoUrl = (!error && uploadData)
+        ? supabase.storage.from("dokumente").getPublicUrl(fileName).data.publicUrl
+        : url;
+
+      const n: ChatNachricht = {
+        baustelle_id: bsId,
+        datum,
+        foto_url: fotoUrl,
+        absender: currentUser?.name || "Unbekannt",
+        absender_rolle: rolle,
+        typ: "foto",
+        ki_verarbeitet: false,
+      };
+      const { data: neu } = await supabase.from("chat_nachrichten").insert([n]).select().single();
+      if (neu) setNachrichten((ns: any[]) => [...ns, { ...n, id: neu.id, created_at: neu.created_at }]);
+    }
+    setFotoSending(false);
+  }
+
+  const getRolleColor = (r: string) => {
+    if (r === "admin" || r === "chef") return "#7986CB";
+    if (r === "polier") return "#BA7517";
+    if (r === "baustellen_leitung") return "#E24B4A";
+    return ACCENT;
+  };
+
+  const getInitials = (name: string) => name.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase();
+
+  const formatTime = (iso?: string) => {
+    if (!iso) return "";
+    return new Date(iso).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+  };
+
+  // Nachrichten nach Absender gruppieren für WhatsApp-ähnliche Darstellung
+  const ichBin = currentUser?.name || "";
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
+
+      {/* KI Status Banner */}
+      {unverarbeitet > 0 && (
+        <div style={{ padding: "6px 12px", background: "#f3e5f5", borderRadius: 8, marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
+          <span style={{ fontSize: 11, color: "#9C27B0" }}>✦ {unverarbeitet} Nachricht{unverarbeitet > 1 ? "en" : ""} noch nicht von KI verarbeitet</span>
+          <button onClick={onKiVerarbeitung} disabled={kiLaeuft}
+            style={{ fontSize: 11, padding: "3px 10px", borderRadius: 6, border: "1px solid #9C27B0", background: "#fff", color: "#9C27B0", cursor: kiLaeuft ? "not-allowed" : "pointer", opacity: kiLaeuft ? 0.6 : 1 }}>
+            {kiLaeuft ? "⏳ Läuft..." : "✦ Jetzt verarbeiten"}
+          </button>
+        </div>
+      )}
+
+      {/* Nachrichten */}
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "8px 0", display: "flex", flexDirection: "column", gap: 4 }}>
+        {nachrichten.length === 0 && (
+          <div style={{ textAlign: "center", color: "#bbb", padding: 40 }}>
+            <div style={{ fontSize: 40, marginBottom: 8 }}>💬</div>
+            <div style={{ fontSize: 14, marginBottom: 4 }}>Noch keine Nachrichten</div>
+            <div style={{ fontSize: 11 }}>Schreib einfach was heute auf der Baustelle passiert ist</div>
+          </div>
+        )}
+
+        {nachrichten.map((n: ChatNachricht, idx: number) => {
+          const ichBinSender = n.absender === ichBin;
+          const vorherigerSelberSender = idx > 0 && nachrichten[idx-1].absender === n.absender;
+
+          return (
+            <div key={n.id || idx} style={{ display: "flex", flexDirection: ichBinSender ? "row-reverse" : "row", alignItems: "flex-end", gap: 6, padding: "1px 12px" }}>
+
+              {/* Avatar – nur wenn erster von diesem Sender */}
+              {!ichBinSender && (
+                <div style={{ width: 30, height: 30, borderRadius: "50%", background: vorherigerSelberSender ? "transparent" : getRolleColor(n.absender_rolle || ""), display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
+                  {!vorherigerSelberSender && getInitials(n.absender)}
+                </div>
+              )}
+
+              {/* Nachricht Bubble */}
+              <div style={{ maxWidth: isMobile ? "75%" : "60%", display: "flex", flexDirection: "column", alignItems: ichBinSender ? "flex-end" : "flex-start" }}>
+
+                {/* Name + Rolle – nur wenn erster von diesem Sender und nicht ich */}
+                {!ichBinSender && !vorherigerSelberSender && (
+                  <div style={{ fontSize: 10, color: getRolleColor(n.absender_rolle || ""), fontWeight: 600, marginBottom: 2, marginLeft: 4 }}>
+                    {n.absender}
+                    {n.absender_rolle && <span style={{ fontWeight: 400, color: "#bbb" }}> · {n.absender_rolle}</span>}
+                  </div>
+                )}
+
+                <div style={{
+                  background: ichBinSender ? ACCENT : "#fff",
+                  color: ichBinSender ? "#fff" : "#222",
+                  borderRadius: ichBinSender ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
+                  padding: n.typ === "foto" ? "4px" : "10px 14px",
+                  boxShadow: "0 1px 4px rgba(0,0,0,0.10)",
+                  maxWidth: "100%",
+                }}>
+                  {n.typ === "text" && (
+                    <div style={{ fontSize: 13, lineHeight: 1.45, wordBreak: "break-word" }}>{n.text}</div>
+                  )}
+                  {n.typ === "foto" && n.foto_url && (
+                    <img src={n.foto_url} alt="Foto" style={{ maxWidth: 220, maxHeight: 200, borderRadius: 12, display: "block", cursor: "pointer" }}
+                      onClick={() => window.open(n.foto_url)} onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                  )}
+                </div>
+
+                {/* Zeit + KI-Status */}
+                <div style={{ fontSize: 9, color: "#bbb", marginTop: 2, marginLeft: ichBinSender ? 0 : 4, marginRight: ichBinSender ? 4 : 0, display: "flex", gap: 4, alignItems: "center" }}>
+                  {formatTime(n.created_at)}
+                  {n.ki_verarbeitet && <span style={{ color: "#9C27B0", fontSize: 9 }}>✦ KI</span>}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        <div ref={chatEndRef} />
+      </div>
+
+      {/* Eingabe */}
+      <div style={{ flexShrink: 0, padding: "8px 12px", background: "#fff", borderTop: "1px solid #f0f0f0", display: "flex", gap: 8, alignItems: "flex-end" }}>
+
+        {/* Foto Buttons */}
+        <label style={{ padding: "10px", borderRadius: "50%", background: "#f0f4f3", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, opacity: fotoSending ? 0.6 : 1 }}>
+          📸
+          <input type="file" accept="image/*" capture="environment" multiple style={{ display: "none" }} onChange={e => e.target.files && sendFoto(e.target.files, true)} />
+        </label>
+        <label style={{ padding: "10px", borderRadius: "50%", background: "#f0f4f3", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, opacity: fotoSending ? 0.6 : 1 }}>
+          🖼
+          <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={e => e.target.files && sendFoto(e.target.files, false)} />
+        </label>
+
+        {/* Texteingabe */}
+        <textarea
+          value={text}
+          onChange={e => setText(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendText(); } }}
+          placeholder="Nachricht schreiben..."
+          rows={1}
+          style={{ flex: 1, padding: "10px 14px", borderRadius: 22, border: "1.5px solid #e8eaed", background: "#f8f8f8", fontSize: 13, resize: "none", outline: "none", fontFamily: "system-ui", maxHeight: 100, overflowY: "auto", lineHeight: 1.4 }}
+        />
+
+        {/* Senden Button */}
+        <button onClick={sendText} disabled={!text.trim() || sending}
+          style={{ width: 42, height: 42, borderRadius: "50%", border: "none", background: text.trim() ? ACCENT : "#e8eaed", cursor: text.trim() ? "pointer" : "not-allowed", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0, transition: "background 0.2s" }}>
+          ➤
+        </button>
+      </div>
     </div>
   );
 }
@@ -523,14 +790,8 @@ function TageslogForm({ eintrag, setEintrag, data, onSave, onWetter, wetterLoad,
       <div style={{ ...C.card, padding: "14px 16px" }}>
         <div style={{ fontSize: 13, fontWeight: 600, color: "#222", marginBottom: 12 }}>⏰ Arbeitszeiten</div>
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
-          <div>
-            <label style={C.lbl}>Arbeitsbeginn</label>
-            <input type="time" style={C.inp} value={eintrag.arbeitsbeginn || ""} onChange={e => setEintrag((x: any) => ({ ...x, arbeitsbeginn: e.target.value }))} />
-          </div>
-          <div>
-            <label style={C.lbl}>Arbeitsende</label>
-            <input type="time" style={C.inp} value={eintrag.arbeitsende || ""} onChange={e => setEintrag((x: any) => ({ ...x, arbeitsende: e.target.value }))} />
-          </div>
+          <div><label style={C.lbl}>Arbeitsbeginn</label><input type="time" style={C.inp} value={eintrag.arbeitsbeginn || ""} onChange={e => setEintrag((x: any) => ({ ...x, arbeitsbeginn: e.target.value }))} /></div>
+          <div><label style={C.lbl}>Arbeitsende</label><input type="time" style={C.inp} value={eintrag.arbeitsende || ""} onChange={e => setEintrag((x: any) => ({ ...x, arbeitsende: e.target.value }))} /></div>
         </div>
       </div>
 
@@ -560,6 +821,79 @@ function TageslogForm({ eintrag, setEintrag, data, onSave, onWetter, wetterLoad,
       <button onClick={handleSave} style={{ ...C.btnP, width: "100%", padding: "13px", fontSize: 14, background: saved ? "#1D9E75" : ACCENT }}>
         {saved ? "✓ Gespeichert!" : "Tageslog speichern"}
       </button>
+    </div>
+  );
+}
+
+// ── Material Karte ─────────────────────────────────────────────────────────────
+function MaterialKarte({ m, fotos, isMobile, onEdit, onDelete, onFotoUpload, onFotoDelete, onLightbox, uploading }: any) {
+  const [showFotos, setShowFotos] = useState(false);
+  const matFotos = fotos.filter((f: any) => f.typ === "Material" || f.typ === "Lieferschein" || f.typ === "Einbauort");
+  const isKI = m.erstellt_von === "KI-Assistent";
+
+  return (
+    <div style={{ ...C.card, marginBottom: 10, padding: "14px 16px", borderLeft: isKI ? "3px solid #9C27B0" : "none" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#222" }}>{m.materialart}</div>
+            {isKI && <span style={{ fontSize: 9, background: "#f3e5f5", color: "#9C27B0", padding: "1px 5px", borderRadius: 4, fontWeight: 600 }}>✦ KI</span>}
+          </div>
+          <div style={{ fontSize: 12, color: ACCENT, marginTop: 2 }}>{m.menge} {m.einheit}</div>
+        </div>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 8, background: m.status === "verbaut" ? "#e8f5f3" : m.status === "gelagert" ? "#fff3e0" : "#f0f4f3", color: m.status === "verbaut" ? ACCENT : m.status === "gelagert" ? "#BA7517" : "#888", fontWeight: 600 }}>{m.status}</span>
+          <button onClick={onEdit} style={{ padding: "3px 8px", borderRadius: 6, border: "1px solid #eee", background: "#fff", cursor: "pointer", fontSize: 11, color: "#555" }}>✎</button>
+          <button onClick={onDelete} style={{ padding: "3px 8px", borderRadius: 6, border: "none", background: "#E24B4A18", cursor: "pointer", fontSize: 11, color: "#E24B4A" }}>✕</button>
+        </div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 8, fontSize: 11, color: "#666", marginBottom: 8 }}>
+        {m.einbauort       && <div><span style={{ color: "#aaa" }}>Einbauort: </span>{m.einbauort}</div>}
+        {m.lv_position     && <div><span style={{ color: "#aaa" }}>LV-Pos: </span>{m.lv_position}</div>}
+        {m.lieferant       && <div><span style={{ color: "#aaa" }}>Lieferant: </span>{m.lieferant}</div>}
+        {m.lieferschein_nr && <div><span style={{ color: "#aaa" }}>LS-Nr: </span>{m.lieferschein_nr}</div>}
+      </div>
+      {m.besonderheiten && <div style={{ marginBottom: 8, padding: "6px 10px", background: "#fff8e1", borderRadius: 8, fontSize: 11, color: "#BA7517" }}>⚠ {m.besonderheiten}</div>}
+      {m.lieferschein_foto && (
+        <div style={{ marginBottom: 8 }}>
+          <div style={{ fontSize: 10, color: "#aaa", marginBottom: 4 }}>Lieferschein:</div>
+          <img src={m.lieferschein_foto} alt="Lieferschein" style={{ height: 70, borderRadius: 6, border: "1px solid #eee", cursor: "pointer" }} onClick={() => onLightbox({ url: m.lieferschein_foto, typ: "Lieferschein", erstellt_von: m.erstellt_von })} />
+        </div>
+      )}
+      <div style={{ borderTop: "1px solid #f5f5f5", paddingTop: 10, marginTop: 4 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <button onClick={() => setShowFotos(s => !s)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12, color: ACCENT, fontWeight: 500, padding: 0 }}>
+            📷 Fotos ({matFotos.length}) {showFotos ? "▲" : "▼"}
+          </button>
+          <div style={{ display: "flex", gap: 6 }}>
+            <label style={{ padding: "4px 10px", borderRadius: 8, border: "1.5px solid " + ACCENT, background: "#e8f5f3", color: ACCENT, cursor: "pointer", fontSize: 11, fontWeight: 600, opacity: uploading ? 0.6 : 1 }}>
+              📸 <input type="file" accept="image/*" capture="environment" multiple style={{ display: "none" }} onChange={e => e.target.files && onFotoUpload(e.target.files, "Material")} />
+            </label>
+            <label style={{ padding: "4px 10px", borderRadius: 8, border: "1.5px solid #eee", background: "#fff", color: "#555", cursor: "pointer", fontSize: 11, opacity: uploading ? 0.6 : 1 }}>
+              🖼 <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={e => e.target.files && onFotoUpload(e.target.files, "Material")} />
+            </label>
+          </div>
+        </div>
+        {showFotos && (
+          <div style={{ marginTop: 10 }}>
+            {matFotos.length === 0 ? (
+              <div style={{ fontSize: 11, color: "#bbb", textAlign: "center", padding: "12px 0" }}>Noch keine Fotos</div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr 1fr" : "1fr 1fr 1fr 1fr 1fr", gap: 6 }}>
+                {matFotos.map((f: any) => (
+                  <div key={f.id} style={{ position: "relative", borderRadius: 8, overflow: "hidden", border: "1px solid #eee" }}>
+                    <img src={f.url} alt={f.typ} style={{ width: "100%", height: 80, objectFit: "cover", display: "block", cursor: "pointer" }} onClick={() => onLightbox(f)} onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                    <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "rgba(0,0,0,0.5)", padding: "2px 4px" }}>
+                      <div style={{ fontSize: 9, color: "#fff" }}>{f.typ}</div>
+                    </div>
+                    <button onClick={() => onFotoDelete(f.id)} style={{ position: "absolute", top: 3, right: 3, background: "rgba(0,0,0,0.55)", border: "none", borderRadius: "50%", width: 18, height: 18, cursor: "pointer", color: "#fff", fontSize: 9, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -596,7 +930,6 @@ function MaterialFormular({ material, isMobile, onSave, onClose }: any) {
         <div style={{ fontSize: 16, fontWeight: 700, color: "#222", marginBottom: 16, paddingBottom: 12, borderBottom: "1px solid #f5f5f5" }}>
           {material.id ? "Material bearbeiten" : "Material erfassen"}
         </div>
-
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
           <div><label style={C.lbl}>Materialart *</label><input style={C.inp} value={f.materialart} onChange={e => setF(x => ({ ...x, materialart: e.target.value }))} placeholder="z.B. Beton C25/30" /></div>
           <div><label style={C.lbl}>Status</label><select style={C.inp} value={f.status} onChange={e => setF(x => ({ ...x, status: e.target.value }))}>{MATERIAL_STATUS.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
@@ -613,128 +946,18 @@ function MaterialFormular({ material, isMobile, onSave, onClose }: any) {
           <div><label style={C.lbl}>Lieferant</label><input style={C.inp} value={f.lieferant || ""} onChange={e => setF(x => ({ ...x, lieferant: e.target.value }))} /></div>
           <div><label style={C.lbl}>Lieferschein-Nr.</label><input style={C.inp} value={f.lieferschein_nr || ""} onChange={e => setF(x => ({ ...x, lieferschein_nr: e.target.value }))} /></div>
         </div>
-
         <div style={{ marginBottom: 8 }}>
           <label style={C.lbl}>Lieferschein Foto</label>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <label style={{ ...C.btnS, cursor: "pointer", fontSize: 12 }}>
-              📷 Foto
-              <input type="file" accept="image/*" style={{ display: "none" }} onChange={lsFotoHochladen} />
-            </label>
+            <label style={{ ...C.btnS, cursor: "pointer", fontSize: 12 }}>📷 Foto<input type="file" accept="image/*" style={{ display: "none" }} onChange={lsFotoHochladen} /></label>
             {f.lieferschein_foto && <img src={f.lieferschein_foto} alt="LS" style={{ height: 48, borderRadius: 6, border: "1px solid #eee" }} />}
           </div>
         </div>
-
         <div><label style={C.lbl}>Besonderheiten</label><textarea rows={2} style={{ ...C.inp, resize: "vertical" as any, fontFamily: "system-ui" }} value={f.besonderheiten || ""} placeholder="z.B. Mehrverbrauch..." onChange={e => setF(x => ({ ...x, besonderheiten: e.target.value }))} /></div>
-
         <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
           <button style={{ ...C.btnS, flex: 1 }} onClick={onClose}>Abbrechen</button>
           <button style={{ ...C.btnP, flex: 1, opacity: !f.materialart ? 0.5 : 1 }} onClick={() => { if (f.materialart) onSave(f); }}>Speichern</button>
         </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Material Karte mit Fotos ───────────────────────────────────────────────────
-function MaterialKarte({ m, fotos, isMobile, onEdit, onDelete, onFotoUpload, onFotoDelete, onLightbox, uploading }: any) {
-  const [showFotos, setShowFotos] = useState(false);
-
-  // Fotos die zu diesem Material gehören (Typ "Material" oder "Lieferschein")
-  const matFotos = fotos.filter((f: any) => f.typ === "Material" || f.typ === "Lieferschein" || f.typ === "Einbauort");
-
-  return (
-    <div style={{ ...C.card, marginBottom: 10, padding: "14px 16px" }}>
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-        <div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: "#222" }}>{m.materialart}</div>
-          <div style={{ fontSize: 12, color: ACCENT, marginTop: 2 }}>{m.menge} {m.einheit}</div>
-        </div>
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 8, background: m.status === "verbaut" ? "#e8f5f3" : m.status === "gelagert" ? "#fff3e0" : "#f0f4f3", color: m.status === "verbaut" ? ACCENT : m.status === "gelagert" ? "#BA7517" : "#888", fontWeight: 600 }}>
-            {m.status}
-          </span>
-          <button onClick={onEdit} style={{ padding: "3px 8px", borderRadius: 6, border: "1px solid #eee", background: "#fff", cursor: "pointer", fontSize: 11, color: "#555" }}>✎</button>
-          <button onClick={onDelete} style={{ padding: "3px 8px", borderRadius: 6, border: "none", background: "#E24B4A18", cursor: "pointer", fontSize: 11, color: "#E24B4A" }}>✕</button>
-        </div>
-      </div>
-
-      {/* Details */}
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 8, fontSize: 11, color: "#666", marginBottom: 8 }}>
-        {m.einbauort       && <div><span style={{ color: "#aaa" }}>Einbauort: </span>{m.einbauort}</div>}
-        {m.lv_position     && <div><span style={{ color: "#aaa" }}>LV-Pos: </span>{m.lv_position}</div>}
-        {m.lieferant       && <div><span style={{ color: "#aaa" }}>Lieferant: </span>{m.lieferant}</div>}
-        {m.lieferschein_nr && <div><span style={{ color: "#aaa" }}>LS-Nr: </span>{m.lieferschein_nr}</div>}
-      </div>
-
-      {m.besonderheiten && (
-        <div style={{ marginBottom: 8, padding: "6px 10px", background: "#fff8e1", borderRadius: 8, fontSize: 11, color: "#BA7517" }}>
-          ⚠ {m.besonderheiten}
-        </div>
-      )}
-
-      {/* Lieferschein Foto (aus Material-Formular) */}
-      {m.lieferschein_foto && (
-        <div style={{ marginBottom: 8 }}>
-          <div style={{ fontSize: 10, color: "#aaa", marginBottom: 4 }}>Lieferschein:</div>
-          <img src={m.lieferschein_foto} alt="Lieferschein"
-            style={{ height: 70, borderRadius: 6, border: "1px solid #eee", cursor: "pointer" }}
-            onClick={() => onLightbox({ url: m.lieferschein_foto, typ: "Lieferschein", erstellt_von: m.erstellt_von })} />
-        </div>
-      )}
-
-      {/* Fotos Toggle */}
-      <div style={{ borderTop: "1px solid #f5f5f5", paddingTop: 10, marginTop: 4 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <button onClick={() => setShowFotos(s => !s)}
-            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12, color: ACCENT, fontWeight: 500, display: "flex", alignItems: "center", gap: 4, padding: 0 }}>
-            📷 Fotos ({matFotos.length}) {showFotos ? "▲" : "▼"}
-          </button>
-
-          {/* Foto Upload direkt beim Material */}
-          <div style={{ display: "flex", gap: 6 }}>
-            <label style={{ padding: "4px 10px", borderRadius: 8, border: "1.5px solid " + ACCENT, background: "#e8f5f3", color: ACCENT, cursor: "pointer", fontSize: 11, fontWeight: 600, opacity: uploading ? 0.6 : 1 }}>
-              📸 Kamera
-              <input type="file" accept="image/*" capture="environment" multiple style={{ display: "none" }}
-                onChange={e => e.target.files && onFotoUpload(e.target.files, "Material")} />
-            </label>
-            <label style={{ padding: "4px 10px", borderRadius: 8, border: "1.5px solid #eee", background: "#fff", color: "#555", cursor: "pointer", fontSize: 11, opacity: uploading ? 0.6 : 1 }}>
-              🖼 Galerie
-              <input type="file" accept="image/*" multiple style={{ display: "none" }}
-                onChange={e => e.target.files && onFotoUpload(e.target.files, "Material")} />
-            </label>
-          </div>
-        </div>
-
-        {/* Foto Galerie */}
-        {showFotos && (
-          <div style={{ marginTop: 10 }}>
-            {matFotos.length === 0 ? (
-              <div style={{ fontSize: 11, color: "#bbb", textAlign: "center", padding: "12px 0" }}>
-                Noch keine Fotos – lade direkt hier hoch
-              </div>
-            ) : (
-              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr 1fr" : "1fr 1fr 1fr 1fr 1fr", gap: 6 }}>
-                {matFotos.map((f: any) => (
-                  <div key={f.id} style={{ position: "relative", borderRadius: 8, overflow: "hidden", border: "1px solid #eee" }}>
-                    <img src={f.url} alt={f.typ}
-                      style={{ width: "100%", height: 80, objectFit: "cover", display: "block", cursor: "pointer" }}
-                      onClick={() => onLightbox(f)}
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-                    <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "rgba(0,0,0,0.5)", padding: "2px 4px" }}>
-                      <div style={{ fontSize: 9, color: "#fff" }}>{f.typ}</div>
-                    </div>
-                    <button onClick={() => onFotoDelete(f.id)}
-                      style={{ position: "absolute", top: 3, right: 3, background: "rgba(0,0,0,0.55)", border: "none", borderRadius: "50%", width: 18, height: 18, cursor: "pointer", color: "#fff", fontSize: 9, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      ✕
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );
