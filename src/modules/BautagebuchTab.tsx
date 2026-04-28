@@ -342,24 +342,277 @@ Antworte NUR mit dem JSON, kein anderer Text.`;
     setKiLaeuft(false);
   }
 
+  // ── PDF Export nach DVT-Vorlage ───────────────────────────────────────────────
+  async function exportPDF() {
+    if (!selectedBS || !eintrag) return;
+    const bs = data.baustellen.find((b: any) => b.id === selectedBS);
+
+    // jsPDF dynamisch laden
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+    document.head.appendChild(script);
+    await new Promise(r => { script.onload = r; });
+    const { jsPDF } = (window as any).jspdf;
+
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    const H = 297; // A4 Höhe in mm
+
+    // Hilfsfunktionen
+    const yrl = (y: number) => y; // jsPDF nutzt y von oben – passt direkt!
+
+    const hline = (x1: number, x2: number, y: number, lw = 0.3) => {
+      doc.setLineWidth(lw); doc.setDrawColor(0);
+      doc.line(x1, y, x2, y);
+    };
+    const vline = (x: number, y1: number, y2: number, lw = 0.3) => {
+      doc.setLineWidth(lw); doc.setDrawColor(0);
+      doc.line(x, y1, x, y2);
+    };
+    const fillrect = (x: number, y: number, w: number, h: number, r: number, g: number, b: number) => {
+      doc.setFillColor(r, g, b); doc.setDrawColor(0); doc.setLineWidth(0.3);
+      doc.rect(x, y, w, h, "FD");
+      doc.setFillColor(0, 0, 0);
+    };
+    const t = (x: number, y: number, s: string, size = 7.5, bold = false) => {
+      doc.setFont("helvetica", bold ? "bold" : "normal");
+      doc.setFontSize(size);
+      doc.setTextColor(0);
+      doc.text(s, x, y);
+    };
+    const tr = (x: number, y: number, s: string, size = 7.5) => {
+      doc.setFont("helvetica", "normal"); doc.setFontSize(size);
+      doc.text(s, x, y, { align: "right" });
+    };
+    const tc = (x: number, y: number, s: string, size = 7.5) => {
+      doc.setFont("helvetica", "normal"); doc.setFontSize(size);
+      doc.text(s, x, y, { align: "center" });
+    };
+
+    // ── ÄUSSERER RAHMEN ─────────────────────────────────────────────────────
+    hline(15.7, 204.4, 6.4, 0.5);
+    vline(15.7, 6.4, 54.1, 0.5);
+    vline(204.4, 6.4, 54.1, 0.5);
+    hline(15.7, 204.4, 54.1, 0.8);
+    vline(15.7, 54.1, 290.2, 0.5);
+    vline(204.4, 54.1, 290.2, 0.5);
+    hline(15.7, 204.4, 290.2, 0.5);
+
+    // ── LOGO ────────────────────────────────────────────────────────────────
+    doc.setFillColor(22, 96, 168);
+    doc.rect(150, 6.4, 54, 22, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(20);
+    doc.text("DVT", 152, 19);
+    doc.setFontSize(13);
+    doc.text(">>", 167, 20);
+    doc.setTextColor(0, 0, 0);
+
+    // Firmenname + Adresse
+    t(148, 30.5, "Dresdner Verkehrstechnik GmbH", 9, true);
+    t(164.5, 34.8, "Zur Wetterwarte 27", 7.5);
+    t(164.5, 38.7, "01109 Dresden", 7.5);
+    t(164.5, 42.5, "0351/21 527 200", 7.5);
+    t(164.5, 46.4, "0351/21 527 220", 7.5);
+
+    // Titel
+    t(16.8, 44, "Bautagebuch", 20, true);
+
+    // ── HEADER ──────────────────────────────────────────────────────────────
+    // Zeile 1: Nr + Datum
+    hline(15.7, 204.4, 59.7); vline(130, 54.1, 59.7); vline(148, 54.1, 59.7); vline(165, 54.1, 59.7);
+    t(134.5, 58.5, "Nr.", 7.5, true);
+    t(144.1, 58.5, String(data.baustellen.indexOf(bs) + 1 || 1), 7.5, true);
+    t(166.1, 58.5, "Datum:", 7.5, true);
+    tr(202, 58.5, datum.split("-").reverse().join("."));
+
+    // Zeile 2: Baustelle + Wetter
+    hline(15.7, 204.4, 65.1); vline(130, 59.7, 65.1); vline(148, 59.7, 65.1);
+    t(16.5, 63.5, "Baustelle:", 7.5, true);
+    t(42.7, 63.5, bs?.name || "");
+    t(123.9, 63.5, "Wetter:", 7.5, true);
+    t(148.5, 63.5, eintrag.wetter || "");
+
+    // Zeile 3: Arbeitszeit + Temperatur
+    hline(15.7, 204.4, 70.5);
+    vline(130, 65.1, 70.5); vline(148, 65.1, 70.5); vline(166, 65.1, 70.5);
+    vline(178, 65.1, 70.5); vline(190, 65.1, 70.5);
+    t(16.5, 69, "Arbeitszeit:", 7.5, true);
+    if (eintrag.arbeitsbeginn) t(40, 69, eintrag.arbeitsbeginn);
+    t(67.9, 68.8, "bis");
+    if (eintrag.arbeitsende) t(73, 69, eintrag.arbeitsende);
+    t(123.9, 69, "Temperatur min.", 7.5, true);
+    if (eintrag.temperatur) t(152.5, 69, eintrag.temperatur.replace("°C","").trim());
+    t(157.3, 68.8, "°C");
+    t(170.9, 68.8, "max.", 7.5, true);
+    t(186, 68.8, "°C");
+    hline(15.7, 204.4, 74.3);
+
+    // ── PERSONAL + GERÄTE ───────────────────────────────────────────────────
+    const C_cols = [15.7, 22.9, 61.1, 78.5, 149.5, 163.8, 185.3, 204.4];
+    fillrect(15.7, 74.3, 188.7, 5.4, 216, 216, 216);
+    C_cols.slice(1,7).forEach(x => vline(x, 74.3, 84.3));
+    t(16.5, 78.3, "Personaleinsatz", 7.5, true);
+    t(67.3, 78.3, "Std.", 7.5, true);
+    t(79.3, 78.3, "Geräte-/LKW-Einsatz", 7.5, true);
+    t(139, 78.3, "Art des", 7.5, true);
+    t(154.1, 78.3, "Std.", 7.5, true);
+    t(174.4, 78.3, "Bemerkungen", 7.5, true);
+
+    hline(15.7, 204.4, 84.3);
+    fillrect(15.7, 79.7, 188.7, 4.6, 216, 216, 216);
+    C_cols.slice(1,7).forEach(x => vline(x, 79.7, 84.3));
+    t(16.5, 83.2, "Anzahl");
+    t(79.3, 83.2, "Gerätes");
+
+    // Personal aus anwesenden Mitarbeitern
+    const anwesendeMa = eintrag.mitarbeiter_anwesend.map((id: number) => {
+      const m = data.mitarbeiter.find((x: any) => x.id === id);
+      return m ? { rolle: m.rolle || m.name, anzahl: "1", stunden: "" } : null;
+    }).filter(Boolean);
+
+    const personalRollen = [
+      { rolle: "Polier", anzahl: "", stunden: "" },
+      { rolle: "Vorarbeiter", anzahl: "", stunden: "" },
+      { rolle: "Facharbeiter", anzahl: "", stunden: "" },
+      { rolle: "Maschinisten", anzahl: "", stunden: "" },
+      { rolle: "Helfer", anzahl: "", stunden: "" },
+      { rolle: "SUB", anzahl: "", stunden: "" },
+      { rolle: "", anzahl: "", stunden: "" },
+    ];
+
+    const y_rows = [84.3, 89.7, 95.1, 100.5, 105.9, 111.3, 116.8];
+    const ZH = 5.4;
+    const geraeteData = eintrag.geraete || [];
+    const nz = Math.max(personalRollen.length, geraeteData.length, y_rows.length);
+
+    for (let i = 0; i < nz; i++) {
+      const y_top = i < y_rows.length ? y_rows[i] : y_rows[y_rows.length-1] + (i-y_rows.length+1)*ZH;
+      const y_next = y_top + ZH;
+      hline(15.7, 204.4, y_next);
+      C_cols.slice(1,7).forEach(x => vline(x, y_top, y_next));
+
+      const p = personalRollen[i];
+      if (p) {
+        if (p.anzahl) tc((22.9+C_cols[0])/2 + 3, y_top+3.8, p.anzahl);
+        tc((22.9+61.1)/2, y_top+3.8, p.rolle);
+        if (p.stunden) tc((61.1+78.5)/2, y_top+3.8, p.stunden);
+      }
+      if (i < geraeteData.length) {
+        t(79.3, y_top+3.8, String(geraeteData[i]));
+      }
+    }
+
+    // ── AUSGEFÜHRTE ARBEITEN ─────────────────────────────────────────────────
+    const y_arb_h = 122.2;
+    fillrect(15.7, y_arb_h, 188.7, 5.6, 216, 216, 216);
+    vline(42.0, y_arb_h, y_arb_h+5.6); vline(185.3, y_arb_h, y_arb_h+5.6);
+    hline(15.7, 204.4, y_arb_h+5.6);
+    t(16.5, y_arb_h+4, "Ausgeführte Arbeiten:", 7.5, true);
+    t(193, y_arb_h+4.5, "AK", 7.5, true);
+
+    // Notizen als Arbeiten-Zeilen aufteilen
+    const arbeitenLines = (eintrag.notizen || "").split("\n").filter((l: string) => l.trim());
+    const y_arb_rows = [127.8, 133.6, 139.2, 144.8, 150.5, 156.1, 161.7, 167.3, 173.0, 178.6];
+    const nA = Math.max(arbeitenLines.length, 8);
+    for (let i = 0; i < nA; i++) {
+      const y_top = i < y_arb_rows.length ? y_arb_rows[i] : y_arb_rows[y_arb_rows.length-1]+(i-y_arb_rows.length+1)*5.6;
+      hline(15.7, 204.4, y_top+5.6);
+      vline(42.0, y_top, y_top+5.6); vline(185.3, y_top, y_top+5.6);
+      if (i < arbeitenLines.length) t(42.7, y_top+4, arbeitenLines[i]);
+    }
+
+    // ── BEHINDERUNGEN ────────────────────────────────────────────────────────
+    const y_beh = 189.9;
+    fillrect(15.7, y_beh, 188.7, 5.6, 216, 216, 216);
+    hline(15.7, 204.4, y_beh+5.6);
+    t(16.5, y_beh+4, "Behinderungen/Erschwernisse", 7.5, true);
+    const y_beh_rows = [195.5, 201.3, 206.9];
+    for (let i = 0; i < 2; i++) {
+      const y_top = y_beh_rows[i];
+      hline(15.7, 204.4, y_top+5.6);
+      vline(42, y_top, y_top+5.6); vline(185.3, y_top, y_top+5.6);
+    }
+
+    // ── LEISTUNGSÄNDERUNGEN ──────────────────────────────────────────────────
+    const y_lei = 212.5;
+    fillrect(15.7, y_lei, 188.7, 5.6, 216, 216, 216);
+    hline(15.7, 204.4, y_lei+5.6);
+    t(16.5, y_lei+4, "Leistungsänderungen", 7.5, true);
+    const y_lei_rows = [218.1, 223.9, 229.5, 235.2];
+    for (let i = 0; i < 3; i++) {
+      const y_top = y_lei_rows[i];
+      hline(15.7, 204.4, y_top+5.6);
+      vline(42, y_top, y_top+5.6); vline(185.3, y_top, y_top+5.6);
+    }
+
+    // ── BESONDERE VORKOMMNISSE ────────────────────────────────────────────────
+    const y_bv = 240.8;
+    fillrect(15.7, y_bv, 188.7, 8.4, 216, 216, 216);
+    hline(15.7, 204.4, y_bv+8.4);
+    t(16.5, y_bv+4.2, "Besondere Vorkommnisse/Sonstiges", 7.5, true);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(7);
+    doc.text("(Begehungen/Abnahmen/…)", 16.4, y_bv+8);
+
+    const besLines = (eintrag.besonderheiten || "").split("\n").filter((l: string) => l.trim());
+    const y_bv_rows = [249.2, 255.6, 261.2];
+    for (let i = 0; i < Math.max(besLines.length, 2); i++) {
+      const y_top = i < y_bv_rows.length ? y_bv_rows[i] : y_bv_rows[y_bv_rows.length-1]+(i-y_bv_rows.length+1)*5.6;
+      hline(15.7, 204.4, y_top+5.6);
+      if (i < besLines.length) t(16.5, y_top+4, besLines[i]);
+    }
+
+    // ── UNTERSCHRIFTEN ────────────────────────────────────────────────────────
+    hline(15.7, 100, 266.9, 0.5);
+    hline(120, 204.4, 266.9, 0.5);
+    t(16.5, 270, "Ort, Datum"); t(42.7, 270, "Dresden,");
+    t(63.2, 270, datum.split("-").reverse().join("."));
+    t(157.3, 270, "Ort, Datum");
+    t(16.5, 276.5, "Auftragnehmer:", 7.5, true);
+    t(157.3, 276.5, "Auftraggeber:", 7.5, true);
+    t(133.2, 287, "erhalten:", 7.5, true);
+
+    // Speichern
+    doc.save(`Bautagebuch_${bs?.name}_${datum}.pdf`);
+  }
+
   async function exportExcel() {
     if (!selectedBS) return;
-    const { data: alleEintraege } = await supabase.from("bautagebuch_eintraege").select("*").eq("baustelle_id", selectedBS).order("datum");
-    const { data: allesMaterial } = await supabase.from("bautagebuch_material").select("*").eq("baustelle_id", selectedBS).order("datum");
+    const { data: alleEintraege }   = await supabase.from("bautagebuch_eintraege").select("*").eq("baustelle_id", selectedBS).order("datum");
+    const { data: allesMaterial }   = await supabase.from("bautagebuch_material").select("*").eq("baustelle_id", selectedBS).order("datum");
+    const { data: alleNachrichten } = await supabase.from("chat_nachrichten").select("*").eq("baustelle_id", selectedBS).order("created_at");
     const bs = data.baustellen.find((b: any) => b.id === selectedBS);
+
     const csvRows = [
-      ["Digitales Bautagebuch - " + bs?.name], ["Exportiert am: " + new Date().toLocaleDateString("de-DE")], [],
+      ["Digitales Bautagebuch - " + bs?.name],
+      ["Exportiert am: " + new Date().toLocaleDateString("de-DE")],
+      [],
       ["=== TAGESEINTRÄGE ==="],
-      ["Datum", "Wetter", "Temperatur", "Wind", "Niederschlag", "Arbeitsbeginn", "Arbeitsende", "Notizen", "Besonderheiten"],
-      ...(alleEintraege || []).map((e: any) => [e.datum, e.wetter, e.temperatur, e.wind, e.niederschlag, e.arbeitsbeginn, e.arbeitsende, e.notizen, e.besonderheiten]),
-      [], ["=== MATERIAL ==="],
-      ["Datum", "Materialart", "Menge", "Einheit", "Einbauort", "LV-Position", "Lieferant", "Lieferschein-Nr", "Status", "Besonderheiten"],
-      ...(allesMaterial || []).map((m: any) => [m.datum, m.materialart, m.menge, m.einheit, m.einbauort, m.lv_position, m.lieferant, m.lieferschein_nr, m.status, m.besonderheiten]),
+      ["Datum", "Wetter", "Temperatur", "Wind", "Niederschlag", "Arbeitsbeginn", "Arbeitsende", "Notizen", "Besonderheiten", "Erstellt von"],
+      ...(alleEintraege || []).map((e: any) => [e.datum, e.wetter, e.temperatur, e.wind, e.niederschlag, e.arbeitsbeginn, e.arbeitsende, e.notizen, e.besonderheiten, e.erstellt_von]),
+      [],
+      ["=== MATERIAL ==="],
+      ["Datum", "Materialart", "Menge", "Einheit", "Einbauort", "LV-Position", "Lieferant", "Lieferschein-Nr", "Status", "Besonderheiten", "Erstellt von"],
+      ...(allesMaterial || []).map((m: any) => [m.datum, m.materialart, m.menge, m.einheit, m.einbauort, m.lv_position, m.lieferant, m.lieferschein_nr, m.status, m.besonderheiten, m.erstellt_von]),
+      [],
+      ["=== SASCHA CHAT-PROTOKOLL ==="],
+      ["Datum", "Uhrzeit", "Absender", "Rolle", "Nachricht", "Typ", "KI verarbeitet"],
+      ...(alleNachrichten || []).map((n: any) => [
+        n.datum,
+        n.created_at ? new Date(n.created_at).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }) : "",
+        n.absender,
+        n.absender_rolle || "",
+        n.typ === "foto" ? "[Foto]" : (n.text || ""),
+        n.typ,
+        n.ki_verarbeitet ? "Ja" : "Nein",
+      ]),
     ];
+
     const csvContent = "\uFEFF" + csvRows.map(r => r.map(c => `"${(c || "").toString().replace(/"/g, '""')}"`).join(";")).join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob); a.download = `Bautagebuch_${bs?.name}_${datum}.csv`; a.click();
+    a.href = URL.createObjectURL(blob);
+    a.download = `Bautagebuch_${bs?.name}_${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
   }
 
   // ── BAUSTELLEN AUSWAHL ────────────────────────────────────────────────────────
@@ -401,7 +654,8 @@ Antworte NUR mit dem JSON, kein anderer Text.`;
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <input type="date" value={datum} onChange={e => setDatum(e.target.value)}
             style={{ ...C.inp, marginBottom: 0, width: "auto", padding: "7px 12px" }} />
-          <button onClick={exportExcel} style={C.btnS}>📊 Export</button>
+          <button onClick={exportPDF} style={{ ...C.btnP, fontSize: 12 }}>📄 PDF</button>
+          <button onClick={exportExcel} style={{ ...C.btnS, fontSize: 12 }}>📊 CSV</button>
         </div>
       </div>
 
