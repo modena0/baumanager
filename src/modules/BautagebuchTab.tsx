@@ -456,7 +456,14 @@ function TageslogForm({ eintrag, setEintrag, data, onSave, onWetter, wetterLoad 
       <div style={{ ...C.card, padding: "14px 16px" }}>
         <div style={{ fontSize: 13, fontWeight: 600, color: "#222", marginBottom: 10 }}>👷 Anwesende Mitarbeiter ({eintrag.mitarbeiter_anwesend.length})</div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {data.mitarbeiter.filter((m: any) => m.status !== "krank" && m.status !== "Urlaub" && m.status !== "gekuendigt").map((m: any) => {
+          {(() => {
+  const bs = data.baustellen.find((b: any) => b.id === eintrag.baustelle_id);
+  const bsMaIds = (bs?.mitarbeiter || []).map(Number);
+  const bsMa = data.mitarbeiter.filter((m: any) =>
+    bsMaIds.includes(m.id) && m.status !== "krank" && m.status !== "Urlaub" && m.status !== "gekuendigt"
+  );
+  return bsMa;
+})().map((m: any) => {
             const sel = eintrag.mitarbeiter_anwesend.includes(m.id);
             return (
               <button key={m.id} onClick={() => toggleMA(m.id)}
