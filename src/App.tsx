@@ -3,26 +3,35 @@ import type { ComponentType } from "react";
 import { NAV, INIT, C, ACCENT } from "./lib/constants";
 import { autoKat } from "./lib/utils";
 import { supabase } from "./lib/supabase";
-import { EditModal }       from "./components/EditModal";
-import { PinModal }        from "./components/PinModal";
-import { LoginScreen }     from "./loginscreen";
-import { Dashboard }       from "./modules/Dashboard";
-import { MitarbeiterTab }  from "./modules/MitarbeiterTab";
-import { BaustellenTab }   from "./modules/BaustellenTab";
-import { KalenderTab }     from "./modules/KalenderTab";
-import { ZuordnungsBoard } from "./modules/ZuordnungsBoard";
-import { FuhrparkTab }     from "./modules/FuhrparkTab";
-import { LagerTab }        from "./modules/LagerTab";
-import { KITab }           from "./modules/KITab";
-import { ROLLE_TABS, KANN } from "./rollen";
-import type { Rolle } from "./rollen";
-import { TeamplanungTab } from "./modules/TeamplanungTab";
-import { BautagebuchTab } from "./modules/BautagebuchTab";
+import { EditModal }          from "./components/EditModal";
+import { PinModal }           from "./components/PinModal";
+import { LoginScreen }        from "./loginscreen";
+import { Dashboard }          from "./modules/Dashboard";
+import { MitarbeiterTab }     from "./modules/MitarbeiterTab";
+import { BaustellenTab }      from "./modules/BaustellenTab";
+import { KalenderTab }        from "./modules/KalenderTab";
+import { FuhrparkTab }        from "./modules/FuhrparkTab";
+import { LagerTab }           from "./modules/LagerTab";
+import { KITab }              from "./modules/KITab";
+import { TeamplanungTab }     from "./modules/TeamplanungTab";
+import { BautagebuchTab }     from "./modules/BautagebuchTab";
 import { DokumentAnalyseTab } from "./modules/DokumentAnalyseTab";
+import { KartenTab }          from "./modules/KartenTab";
+import { ROLLE_TABS, KANN }   from "./rollen";
+import type { Rolle }         from "./rollen";
 
 const MODULE_MAP: Record<number, ComponentType<any>> = {
-  0: Dashboard, 1: MitarbeiterTab, 2: ZuordnungsBoard, 3: BaustellenTab,
-  4: KalenderTab, 5: LagerTab, 6: FuhrparkTab, 7: KITab, 8: TeamplanungTab, 9: BautagebuchTab, 10: DokumentAnalyseTab,
+  0:  Dashboard,
+  1:  MitarbeiterTab,
+  3:  BaustellenTab,
+  4:  KalenderTab,
+  5:  LagerTab,
+  6:  FuhrparkTab,
+  7:  KITab,
+  8:  TeamplanungTab,
+  9:  BautagebuchTab,
+  10: DokumentAnalyseTab,
+  11: KartenTab,
 };
 
 // ── Hilfsfunktionen ────────────────────────────────────────────────────────────
@@ -45,10 +54,9 @@ const toArr = (v: any): any[] => {
   return [];
 };
 
-// Arrays mit Zahlen (IDs)
-const toNumArr = (v: any): number[] => toArr(v).map((i: any) => Number(i)).filter((i: number) => !isNaN(i));
+const toNumArr = (v: any): number[] =>
+  toArr(v).map((i: any) => Number(i)).filter((i: number) => !isNaN(i));
 
-// Arrays mit Strings
 const strToArr = (str: string): string[] => {
   if (!str) return [];
   return str.split(",").map((s: string) => s.trim()).filter(Boolean);
@@ -57,7 +65,6 @@ const strToArr = (str: string): string[] => {
 const fixBS = (b: any) => ({
   ...b,
   anforderungen: toArr(b.anforderungen),
-  // IDs immer als Zahlen speichern!
   mitarbeiter:   toNumArr(b.mitarbeiter),
   fahrzeuge:     toNumArr(b.fahrzeuge),
   equipment:     toNumArr(b.equipment),
@@ -100,10 +107,10 @@ export default function App() {
           gutMit:          toNumArr(m.gutMit),
           nichtMit:        toNumArr(m.nichtMit),
         })),
-        baustellen:  bs.data ? bs.data.map(fixBS) : [],
-        fahrzeuge:   fz.data || [],
-        lager:       lg.data || [],
-        termine:     Array.isArray(tr.data) ? tr.data : [],
+        baustellen: bs.data ? bs.data.map(fixBS) : [],
+        fahrzeuge:  fz.data || [],
+        lager:      lg.data || [],
+        termine:    Array.isArray(tr.data) ? tr.data : [],
       });
       setDataLoaded(true);
     }
@@ -120,19 +127,61 @@ export default function App() {
   const today = new Date().toISOString().split("T")[0];
   const pflichtCount = (data.termine || []).filter((t: any) => t.art === "Pflichttermin" && t.datum >= today).length;
 
+  // ── KI ────────────────────────────────────────────────────────────────────────
   const callAI = (prompt: string, setter: (s: string) => void, loadSetter: (b: boolean) => void) => {
     loadSetter(true); setter("");
-    const ctx = "Bau-Logistik-Experte. Antworte auf Deutsch. Daten:" + JSON.stringify({ mitarbeiter: data.mitarbeiter, baustellen: data.baustellen, fahrzeuge: data.fahrzeuge, lager: data.lager, termine: data.termine });
-    fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 800, system: ctx, messages: [{ role: "user", content: prompt }] }) })
-      .then(r => r.json()).then(d => setter((d.content && d.content[0] && d.content[0].text) || "Keine Antwort.")).catch(e => setter("Fehler: " + e.message)).finally(() => loadSetter(false));
+    const ctx = "Bau-Logistik-Experte. Antworte auf Deutsch. Daten:" + JSON.stringify({
+      mitarbeiter: data.mitarbeiter, baustellen: data.baustellen,
+      fahrzeuge: data.fahrzeuge, lager: data.lager, termine: data.termine,
+    });
+    fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 800, system: ctx, messages: [{ role: "user", content: prompt }] }),
+    })
+      .then(r => r.json())
+      .then(d => setter((d.content && d.content[0] && d.content[0].text) || "Keine Antwort."))
+      .catch(e => setter("Fehler: " + e.message))
+      .finally(() => loadSetter(false));
   };
 
+  // ── Geocoding ─────────────────────────────────────────────────────────────────
+  const geocodeBS = async (id: number, ort: string) => {
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(ort)}&format=json&limit=1`,
+        { headers: { "Accept-Language": "de" } }
+      );
+      const d = await res.json();
+      if (d?.[0]) {
+        const lat = parseFloat(d[0].lat);
+        const lng = parseFloat(d[0].lon);
+        await supabase.from("baustellen").update({ lat, lng }).eq("id", id);
+        setData((x: any) => ({
+          ...x,
+          baustellen: x.baustellen.map((b: any) => b.id === id ? { ...b, lat, lng } : b),
+        }));
+      }
+    } catch { /* ignorieren */ }
+  };
+
+  // ── Termine ───────────────────────────────────────────────────────────────────
   const saveTermin = async (d: any) => {
-    if (d.id) { await supabase.from("termine").update(d).eq("id", d.id); setData((st: any) => ({ ...st, termine: st.termine.map((t: any) => t.id === d.id ? d : t) })); }
-    else { const { data: neu } = await supabase.from("termine").insert([d]).select(); if (neu) setData((st: any) => ({ ...st, termine: [...(st.termine || []), neu[0]] })); }
+    if (d.id) {
+      await supabase.from("termine").update(d).eq("id", d.id);
+      setData((st: any) => ({ ...st, termine: st.termine.map((t: any) => t.id === d.id ? d : t) }));
+    } else {
+      const { data: neu } = await supabase.from("termine").insert([d]).select();
+      if (neu) setData((st: any) => ({ ...st, termine: [...(st.termine || []), neu[0]] }));
+    }
   };
-  const deleteTermin = async (id: number) => { await supabase.from("termine").delete().eq("id", id); setData((d: any) => ({ ...d, termine: d.termine.filter((t: any) => t.id !== id) })); };
 
+  const deleteTermin = async (id: number) => {
+    await supabase.from("termine").delete().eq("id", id);
+    setData((d: any) => ({ ...d, termine: d.termine.filter((t: any) => t.id !== id) }));
+  };
+
+  // ── Modal ─────────────────────────────────────────────────────────────────────
   const openAdd = (type: string) => {
     const init = type === "baustellen" ? { mitarbeiter: [], fahrzeuge: [], equipment: [], aufgaben: [] } : {};
     setModal({ type, mode: "add", initialForm: init });
@@ -158,7 +207,10 @@ export default function App() {
       .filter(Boolean);
 
   const saveItem = async (f: any) => {
-    const { type, mode, initialForm } = modal; const id = initialForm.id; const p = { ...f };
+    const { type, mode, initialForm } = modal;
+    const id = initialForm.id;
+    const p = { ...f };
+
     if (type === "mitarbeiter") {
       p.qualifikationen = strToArr(f.qualifikationen);
       p.fuehrerschein   = strToArr(f.fuehrerschein);
@@ -168,6 +220,7 @@ export default function App() {
       p.gutMit          = pn(f.gutMit);
       p.nichtMit        = pn(f.nichtMit);
     }
+
     if (type === "baustellen") {
       p.anforderungen = strToArr(f.anforderungen);
       p.mitarbeiter   = Array.isArray(p.mitarbeiter) ? p.mitarbeiter.map(Number) : [];
@@ -175,13 +228,36 @@ export default function App() {
       p.equipment     = Array.isArray(p.equipment)   ? p.equipment.map(Number)   : [];
       p.aufgaben      = Array.isArray(p.aufgaben)    ? p.aufgaben                : [];
     }
+
+    let newBsId: number | null = null;
+
     if (mode === "add") {
       const { data: neu } = await supabase.from(type).insert([p]).select();
-      if (neu) setData((d: any) => { const n = { ...d }; const item = type === "baustellen" ? fixBS(neu[0]) : neu[0]; n[type] = [...(d[type] || []), item]; return n; });
+      if (neu) {
+        if (type === "baustellen") newBsId = neu[0].id;
+        setData((d: any) => {
+          const n = { ...d };
+          const item = type === "baustellen" ? fixBS(neu[0]) : neu[0];
+          n[type] = [...(d[type] || []), item];
+          return n;
+        });
+      }
     } else {
       await supabase.from(type).update(p).eq("id", id);
-      setData((d: any) => { const n = { ...d }; const item = type === "baustellen" ? fixBS({ ...p, id }) : { ...p, id }; n[type] = d[type].map((x: any) => x.id === id ? item : x); return n; });
+      setData((d: any) => {
+        const n = { ...d };
+        const item = type === "baustellen" ? fixBS({ ...p, id }) : { ...p, id };
+        n[type] = d[type].map((x: any) => x.id === id ? item : x);
+        return n;
+      });
+      if (type === "baustellen") newBsId = id;
     }
+
+    // Auto-Geocoding wenn Baustelle einen Ort hat
+    if (type === "baustellen" && p.ort && newBsId) {
+      geocodeBS(newBsId, p.ort);
+    }
+
     closeModal();
   };
 
@@ -193,7 +269,14 @@ export default function App() {
   const simulateGPS = () => {
     setGpsStatus("Aktualisiere...");
     setTimeout(() => {
-      setData((d: any) => ({ ...d, fahrzeuge: d.fahrzeuge.map((f: any) => ({ ...f, lat: f.lat + (Math.random() - 0.5) * 0.008, lng: f.lng + (Math.random() - 0.5) * 0.008 })) }));
+      setData((d: any) => ({
+        ...d,
+        fahrzeuge: d.fahrzeuge.map((f: any) => ({
+          ...f,
+          lat: f.lat + (Math.random() - 0.5) * 0.008,
+          lng: f.lng + (Math.random() - 0.5) * 0.008,
+        })),
+      }));
       setGpsStatus("Aktualisiert " + new Date().toLocaleTimeString("de-DE"));
     }, 800);
   };
@@ -240,6 +323,8 @@ export default function App() {
     const mobileNav = NAV.filter(item => erlaubteTabs.includes(item.id));
     return (
       <div style={{ fontFamily: "system-ui,sans-serif", height: "100vh", overflow: "hidden", background: "#f0f4f3", display: "flex", flexDirection: "column" }}>
+
+        {/* Mobile Header */}
         <div style={{ background: ACCENT, padding: "12px 16px 10px", flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "#fff" }}>BM</div>
@@ -251,10 +336,12 @@ export default function App() {
           <button onClick={() => setCurrentUser(null)} style={{ background: "rgba(255,255,255,0.15)", border: "none", borderRadius: 8, padding: "6px 10px", color: "#fff", cursor: "pointer", fontSize: 14 }}>🚪</button>
         </div>
 
+        {/* Mobile Content */}
         <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 12 }}>
           {ActiveModule && <ActiveModule {...moduleProps} />}
         </div>
 
+        {/* Mobile Bottom Navigation */}
         <div style={{ background: "#fff", borderTop: "1px solid #eee", display: "flex", flexShrink: 0, paddingBottom: 8, overflowX: "auto" }}>
           {mobileNav.map(item => {
             const active = tab === item.id;
@@ -264,30 +351,48 @@ export default function App() {
                 {active && <div style={{ position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)", width: 28, height: 3, background: ACCENT, borderRadius: "0 0 3px 3px" }} />}
                 <span style={{ fontSize: 22 }}>{item.icon}</span>
                 <span style={{ fontSize: 9, color: active ? ACCENT : "#aaa", fontWeight: active ? 700 : 400, whiteSpace: "nowrap" }}>{item.label}</span>
-                {item.label === "Kalender" && pflichtCount > 0 && <span style={{ position: "absolute", top: 4, right: "calc(50% - 16px)", background: "#E24B4A", color: "#fff", borderRadius: "50%", fontSize: 9, width: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{pflichtCount}</span>}
+                {item.label === "Kalender" && pflichtCount > 0 && (
+                  <span style={{ position: "absolute", top: 4, right: "calc(50% - 16px)", background: "#E24B4A", color: "#fff", borderRadius: "50%", fontSize: 9, width: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{pflichtCount}</span>
+                )}
               </button>
             );
           })}
         </div>
 
+        {/* Mobile Overlays */}
         {modal && <EditModal modalType={modal.type} modalMode={modal.mode} initialForm={modal.initialForm} onSave={saveItem} onClose={closeModal} />}
         {showPin && <PinModal onSuccess={() => setShowPin(false)} onCancel={() => setShowPin(false)} />}
 
         {detailMA && (
-          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 9999 }} onClick={e => { if (e.target === e.currentTarget) setDetailMA(null); }}>
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 9999 }}
+            onClick={e => { if (e.target === e.currentTarget) setDetailMA(null); }}>
             <div style={{ ...C.card, width: "100%", maxHeight: "90vh", overflowY: "auto", borderRadius: "20px 20px 0 0", padding: "20px 16px 32px" }}>
               <div style={{ width: 40, height: 4, background: "#ddd", borderRadius: 2, margin: "0 auto 16px" }} />
               <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16, paddingBottom: 14, borderBottom: "1px solid #f5f5f5" }}>
-                <div style={{ width: 48, height: 48, borderRadius: "50%", background: "#e8f5f3", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 700, color: ACCENT }}>{detailMA.name.split(" ").map((n: string) => n[0]).join("")}</div>
-                <div><div style={{ fontWeight: 700, fontSize: 16, color: "#222" }}>{detailMA.name}</div><div style={{ fontSize: 12, color: "#aaa" }}>{detailMA.rolle}</div></div>
+                <div style={{ width: 48, height: 48, borderRadius: "50%", background: "#e8f5f3", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 700, color: ACCENT }}>
+                  {detailMA.name.split(" ").map((n: string) => n[0]).join("")}
+                </div>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 16, color: "#222" }}>{detailMA.name}</div>
+                  <div style={{ fontSize: 12, color: "#aaa" }}>{detailMA.rolle}</div>
+                </div>
               </div>
-              {([["Telefon", detailMA.telefon], ["Adresse", detailMA.adresse], ["Baustelle", detailMA.baustelle], ["Status", detailMA.status], ...(KANN.lohnSehen(rolle) ? [["Stundenlohn", detailMA.stundenlohn + " €/h"]] : [])] as [string, any][]).map(([label, val]) => {
+              {([
+                ["Telefon", detailMA.telefon], ["Adresse", detailMA.adresse],
+                ["Baustelle", detailMA.baustelle], ["Status", detailMA.status],
+                ...(KANN.lohnSehen(rolle) ? [["Stundenlohn", detailMA.stundenlohn + " €/h"]] : []),
+              ] as [string, any][]).map(([label, val]) => {
                 if (!val) return null;
-                return <div key={label} style={{ display: "flex", gap: 12, padding: "7px 0", borderBottom: "1px solid #f5f5f5" }}><span style={{ fontSize: 11, color: "#bbb", minWidth: 100 }}>{label}</span><span style={{ fontSize: 12, color: "#333" }}>{val}</span></div>;
+                return <div key={label} style={{ display: "flex", gap: 12, padding: "7px 0", borderBottom: "1px solid #f5f5f5" }}>
+                  <span style={{ fontSize: 11, color: "#bbb", minWidth: 100 }}>{label}</span>
+                  <span style={{ fontSize: 12, color: "#333" }}>{val}</span>
+                </div>;
               })}
               <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
                 <button style={{ ...C.btnS, flex: 1, padding: "12px" }} onClick={() => setDetailMA(null)}>Schließen</button>
-                {KANN.mitarbeiterEdit(rolle) && <button style={{ ...C.btnP, flex: 1, padding: "12px" }} onClick={() => { openEdit("mitarbeiter", detailMA); setDetailMA(null); }}>Bearbeiten</button>}
+                {KANN.mitarbeiterEdit(rolle) && (
+                  <button style={{ ...C.btnP, flex: 1, padding: "12px" }} onClick={() => { openEdit("mitarbeiter", detailMA); setDetailMA(null); }}>Bearbeiten</button>
+                )}
               </div>
             </div>
           </div>
@@ -299,8 +404,11 @@ export default function App() {
   // ── DESKTOP LAYOUT ────────────────────────────────────────────────────────────
   return (
     <div style={{ fontFamily: "system-ui,sans-serif", height: "100vh", overflow: "hidden", background: "#f0f4f3", display: "flex" }}>
+
+      {/* Sidebar */}
       <div onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
         style={{ width: hovered ? 200 : 64, minWidth: hovered ? 200 : 64, background: ACCENT, height: "100vh", display: "flex", flexDirection: "column", padding: "16px 0", flexShrink: 0, transition: "width 0.3s ease, min-width 0.3s ease", overflow: "hidden", zIndex: 10, boxShadow: hovered ? "4px 0 20px rgba(0,0,0,0.15)" : "none" }}>
+
         <div style={{ padding: "0 12px 20px", display: "flex", alignItems: "center", gap: 10, overflow: "hidden" }}>
           <div style={{ width: 36, height: 36, borderRadius: 8, background: "rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#fff", flexShrink: 0 }}>BM</div>
           <div style={{ opacity: hovered ? 1 : 0, transition: "opacity 0.2s ease", whiteSpace: "nowrap" }}>
@@ -308,21 +416,28 @@ export default function App() {
             <div style={{ fontSize: 9, color: "rgba(255,255,255,0.7)" }}>{currentUser.rolle_system}</div>
           </div>
         </div>
+
         <div style={{ flex: 1 }}>
           {NAV.filter(item => erlaubteTabs.includes(item.id)).map(item => {
             const active = tab === item.id;
             return (
               <div key={item.id} style={{ position: "relative" }} title={!hovered ? item.label : ""}>
-                <button onClick={() => setTab(item.id)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 14px", border: "none", background: active ? "rgba(255,255,255,0.2)" : "transparent", cursor: "pointer", color: active ? "#fff" : "rgba(255,255,255,0.75)", fontSize: 13, fontWeight: active ? 600 : 400, borderLeft: active ? "3px solid #fff" : "3px solid transparent", boxSizing: "border-box", width: "100%", whiteSpace: "nowrap", overflow: "hidden" }}>
+                <button onClick={() => setTab(item.id)}
+                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 14px", border: "none", background: active ? "rgba(255,255,255,0.2)" : "transparent", cursor: "pointer", color: active ? "#fff" : "rgba(255,255,255,0.75)", fontSize: 13, fontWeight: active ? 600 : 400, borderLeft: active ? "3px solid #fff" : "3px solid transparent", boxSizing: "border-box", width: "100%", whiteSpace: "nowrap", overflow: "hidden" }}>
                   <span style={{ fontSize: 17, flexShrink: 0 }}>{item.icon}</span>
                   <span style={{ opacity: hovered ? 1 : 0, transition: "opacity 0.2s ease", flex: 1 }}>{item.label}</span>
-                  {item.label === "Kalender" && pflichtCount > 0 && hovered && <span style={{ background: "#E24B4A", color: "#fff", borderRadius: 10, fontSize: 10, padding: "1px 6px", fontWeight: 700 }}>{pflichtCount}</span>}
+                  {item.label === "Kalender" && pflichtCount > 0 && hovered && (
+                    <span style={{ background: "#E24B4A", color: "#fff", borderRadius: 10, fontSize: 10, padding: "1px 6px", fontWeight: 700 }}>{pflichtCount}</span>
+                  )}
                 </button>
-                {item.label === "Kalender" && pflichtCount > 0 && !hovered && <span style={{ position: "absolute", top: 8, right: 10, width: 7, height: 7, borderRadius: "50%", background: "#E24B4A", pointerEvents: "none" }} />}
+                {item.label === "Kalender" && pflichtCount > 0 && !hovered && (
+                  <span style={{ position: "absolute", top: 8, right: 10, width: 7, height: 7, borderRadius: "50%", background: "#E24B4A", pointerEvents: "none" }} />
+                )}
               </div>
             );
           })}
         </div>
+
         <div style={{ padding: "12px" }}>
           <button onClick={() => setCurrentUser(null)} title={!hovered ? "Abmelden" : ""}
             style={{ width: "100%", padding: "7px 10px", borderRadius: 8, background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", cursor: "pointer", fontSize: 11, display: "flex", alignItems: "center", gap: 10, overflow: "hidden", whiteSpace: "nowrap" }}>
@@ -332,11 +447,14 @@ export default function App() {
         </div>
       </div>
 
+      {/* Main Content */}
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
         <div style={{ padding: "12px 20px 10px", flexShrink: 0, borderBottom: "1px solid #e8eaed", background: "#f0f4f3", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
             <div style={{ fontSize: 17, fontWeight: 700, color: "#222" }}>{navLabel}</div>
-            <div style={{ fontSize: 11, color: "#bbb", marginTop: 1 }}>{new Date().toLocaleDateString("de-DE", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</div>
+            <div style={{ fontSize: 11, color: "#bbb", marginTop: 1 }}>
+              {new Date().toLocaleDateString("de-DE", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+            </div>
           </div>
           <div style={{ background: ACCENT + "22", color: ACCENT, borderRadius: 20, padding: "4px 12px", fontSize: 11, fontWeight: 600 }}>
             {currentUser.name} · {currentUser.rolle_system}
@@ -347,31 +465,57 @@ export default function App() {
         </div>
       </div>
 
+      {/* Desktop Overlays */}
       {showPin && <PinModal onSuccess={() => setShowPin(false)} onCancel={() => setShowPin(false)} />}
       {modal && <EditModal modalType={modal.type} modalMode={modal.mode} initialForm={modal.initialForm} onSave={saveItem} onClose={closeModal} />}
 
       {detailMA && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }} onClick={e => { if (e.target === e.currentTarget) setDetailMA(null); }}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}
+          onClick={e => { if (e.target === e.currentTarget) setDetailMA(null); }}>
           <div style={{ ...C.card, width: "min(500px,95vw)", maxHeight: "90vh", overflowY: "auto" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16, paddingBottom: 14, borderBottom: "1px solid #f5f5f5" }}>
-              <div style={{ width: 52, height: 52, borderRadius: "50%", background: "#e8f5f3", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 700, color: ACCENT }}>{detailMA.name.split(" ").map((n: string) => n[0]).join("")}</div>
-              <div><div style={{ fontWeight: 700, fontSize: 17, color: "#222" }}>{detailMA.name}</div><div style={{ fontSize: 13, color: "#aaa" }}>{detailMA.rolle}</div></div>
+              <div style={{ width: 52, height: 52, borderRadius: "50%", background: "#e8f5f3", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 700, color: ACCENT }}>
+                {detailMA.name.split(" ").map((n: string) => n[0]).join("")}
+              </div>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 17, color: "#222" }}>{detailMA.name}</div>
+                <div style={{ fontSize: 13, color: "#aaa" }}>{detailMA.rolle}</div>
+              </div>
             </div>
-            {([["Telefon", detailMA.telefon], ["Adresse", detailMA.adresse], ["Geburtsdatum", detailMA.geburtsdatum], ["Notfallkontakt", detailMA.notfallkontakt], ["Eintrittsdatum", detailMA.eintrittsdatum], ["Vertragsart", detailMA.vertragsart], ...(KANN.lohnSehen(rolle) ? [["Stundenlohn", detailMA.stundenlohn + " €/h"]] : []), ["Urlaub", (detailMA.urlaubGenommen || 0) + " / " + (detailMA.urlaubstage || 0) + " Tage"], ["Baustelle", detailMA.baustelle], ["Kategorie", detailMA.kategorie || autoKat(detailMA)], ["Zertifikate", detailMA.zertifikate], ["Bemerkungen", detailMA.bemerkungen]] as [string, any][]).map(([label, val]) => {
+            {([
+              ["Telefon", detailMA.telefon], ["Adresse", detailMA.adresse],
+              ["Geburtsdatum", detailMA.geburtsdatum], ["Notfallkontakt", detailMA.notfallkontakt],
+              ["Eintrittsdatum", detailMA.eintrittsdatum], ["Vertragsart", detailMA.vertragsart],
+              ...(KANN.lohnSehen(rolle) ? [["Stundenlohn", detailMA.stundenlohn + " €/h"]] : []),
+              ["Urlaub", (detailMA.urlaubGenommen || 0) + " / " + (detailMA.urlaubstage || 0) + " Tage"],
+              ["Baustelle", detailMA.baustelle], ["Kategorie", detailMA.kategorie || autoKat(detailMA)],
+              ["Zertifikate", detailMA.zertifikate], ["Bemerkungen", detailMA.bemerkungen],
+            ] as [string, any][]).map(([label, val]) => {
               if (!val) return null;
-              return <div key={label} style={{ display: "flex", gap: 12, padding: "7px 0", borderBottom: "1px solid #f5f5f5" }}><span style={{ fontSize: 12, color: "#bbb", minWidth: 110 }}>{label}</span><span style={{ fontSize: 13, color: "#333" }}>{val}</span></div>;
+              return <div key={label} style={{ display: "flex", gap: 12, padding: "7px 0", borderBottom: "1px solid #f5f5f5" }}>
+                <span style={{ fontSize: 12, color: "#bbb", minWidth: 110 }}>{label}</span>
+                <span style={{ fontSize: 13, color: "#333" }}>{val}</span>
+              </div>;
             })}
             <div style={{ padding: "10px 0 4px" }}>
               <div style={{ fontSize: 12, color: "#bbb", marginBottom: 6 }}>Qualifikationen</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>{toArr(detailMA.qualifikationen).map((q: string) => <span key={q} style={C.tag}>{q}</span>)}</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                {toArr(detailMA.qualifikationen).map((q: string) => <span key={q} style={C.tag}>{q}</span>)}
+              </div>
             </div>
             <div style={{ padding: "4px 0" }}>
               <div style={{ fontSize: 12, color: "#bbb", marginBottom: 6 }}>Führerschein</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>{toArr(detailMA.fuehrerschein).map((f: string) => <span key={f} style={{ display: "inline-block", padding: "2px 8px", borderRadius: 10, fontSize: 11, background: "#e8f5f3", color: ACCENT, marginRight: 4, marginBottom: 2 }}>{f}</span>)}</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                {toArr(detailMA.fuehrerschein).map((f: string) => (
+                  <span key={f} style={{ display: "inline-block", padding: "2px 8px", borderRadius: 10, fontSize: 11, background: "#e8f5f3", color: ACCENT, marginRight: 4, marginBottom: 2 }}>{f}</span>
+                ))}
+              </div>
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
               <button style={C.btnS} onClick={() => setDetailMA(null)}>Schließen</button>
-              {KANN.mitarbeiterEdit(rolle) && <button style={C.btnP} onClick={() => { openEdit("mitarbeiter", detailMA); setDetailMA(null); }}>Bearbeiten</button>}
+              {KANN.mitarbeiterEdit(rolle) && (
+                <button style={C.btnP} onClick={() => { openEdit("mitarbeiter", detailMA); setDetailMA(null); }}>Bearbeiten</button>
+              )}
             </div>
           </div>
         </div>

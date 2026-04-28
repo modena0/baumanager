@@ -12,6 +12,7 @@ export const NAV = [
   { id: 5, label: "Lager",       icon: "📦" },
   { id: 7, label: "KI",          icon: "✦" },
   { id: 1, label: "Mitarbeiter", icon: "👤" },
+  { id: 11, label: "Karte", icon: "🗺" },
 ];
 
 export const BS_KAT  = ["Tiefbau", "LSA", "Straße", "Sonstiges"];
