@@ -862,7 +862,6 @@ function ChatTab({ bsId, datum, nachrichten, setNachrichten, currentUser, rolle,
     const verlauf = verlaufNachrichten.slice(-10).map((n: any) =>
       `${n.absender}: ${n.text || "[Foto gesendet]"}`
     ).join("\n");
-
     const prompt = `Du bist Sascha, ein freundlicher und kompetenter digitaler Bautagebuch-Assistent.
 Du bist direkt auf der Baustelle "${bsName}" dabei und hilfst dem Team alle relevanten Infos für das Bautagebuch zu erfassen.
 Du kommunizierst wie ein erfahrener Kollege – locker, direkt, auf Deutsch, kurz und hilfreich.
@@ -888,9 +887,6 @@ REGELN:
 Antworte jetzt als Sascha:`;
 
     try {
-      // Realistische Verzögerung (Sascha "tippt")
-      await new Promise(r => setTimeout(r, 600 + Math.random() * 800));
-
       const res = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -904,6 +900,9 @@ Antworte jetzt als Sascha:`;
       const antwort = d.content?.[0]?.text?.trim();
       if (!antwort) return;
 
+      // Realistische Verzögerung NACH der Antwort
+      await new Promise(r => setTimeout(r, 400 + Math.random() * 400));
+
       const saschaMsg: ChatNachricht = {
         baustelle_id: bsId,
         datum,
@@ -914,7 +913,10 @@ Antworte jetzt als Sascha:`;
         ki_verarbeitet: true,
       };
       const { data: sNeu } = await supabase.from("chat_nachrichten").insert([saschaMsg]).select().single();
-      if (sNeu) setNachrichten((ns: any[]) => [...ns, { ...saschaMsg, id: sNeu.id, created_at: sNeu.created_at }]);
+      if (sNeu) {
+        const fertig = { ...saschaMsg, id: sNeu.id, created_at: sNeu.created_at };
+        setNachrichten((ns: any[]) => [...ns, fertig]);
+      }
 
     } catch (e) {
       console.error("Sascha Fehler:", e);
