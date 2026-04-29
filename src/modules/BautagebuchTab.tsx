@@ -264,28 +264,27 @@ export function BautagebuchTab({ data, currentUser, rolle }: any) {
   // ── KI Verarbeitung ────────────────────────────────────────────────────────────
   async function kiVerarbeitung() {
     if (!selectedBS || kiLaeuft) return;
-    const unverarbeitet = nachrichten.filter(n => !n.ki_verarbeitet);
-    if (unverarbeitet.length === 0) return;
+    // Nur echte Nutzernachrichten verarbeiten, nicht Saschas eigene
+    const unverarbeitet = nachrichten.filter(n => !n.ki_verarbeitet && n.absender !== "Sascha");
+    if (unverarbeitet.length === 0) { alert("Keine neuen Nachrichten zum Verarbeiten."); return; }
     setKiLaeuft(true);
 
     const bs = data.baustellen.find((b: any) => b.id === selectedBS);
-    const prompt = `Du bist ein Bautagebuch-Assistent. Analysiere folgende Chat-Nachrichten von der Baustelle "${bs?.name}" für das Datum ${datum} und extrahiere strukturierte Informationen.
+    const prompt = `Du bist ein Bautagebuch-Assistent. Analysiere folgende Chat-Nachrichten von der Baustelle "${bs?.name}" für das Datum ${datum}.
 
-CHAT-NACHRICHTEN:
-${unverarbeitet.map(n => `[${n.absender} (${n.absender_rolle || "Mitarbeiter"}), ${new Date(n.created_at || "").toLocaleTimeString("de-DE")}]: ${n.text || "[Foto]"}`).join("\n")}
+NACHRICHTEN:
+${unverarbeitet.map(n => `[${n.absender}]: ${n.text || "[Foto]"}`).join("\n")}
 
-Extrahiere aus den Nachrichten folgende Informationen als JSON:
+Extrahiere strukturierte Informationen. Antworte NUR mit diesem JSON, kein anderer Text:
 {
-  "notizen": "Zusammenfassung der ausgeführten Arbeiten",
-  "besonderheiten": "Probleme, Verzögerungen, besondere Ereignisse oder null",
+  "notizen": "Kurze Zusammenfassung der ausgeführten Arbeiten (oder null)",
+  "besonderheiten": "Probleme, Verzögerungen, besondere Ereignisse (oder null)",
+  "arbeitsbeginn": "HH:MM falls erkennbar (oder null)",
+  "arbeitsende": "HH:MM falls erkennbar (oder null)",
   "materialien": [
-    { "materialart": "Name", "menge": 0, "einheit": "m³", "einbauort": "Ort", "status": "verbaut" }
-  ],
-  "arbeitsbeginn": "HH:MM oder null",
-  "arbeitsende": "HH:MM oder null"
-}
-
-Antworte NUR mit dem JSON, kein anderer Text.`;
+    { "materialart": "z.B. Beton", "menge": 10, "einheit": "m³", "einbauort": "Ort oder null", "status": "verbaut" }
+  ]
+}`;
 
     try {
       const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -294,39 +293,60 @@ Antworte NUR mit dem JSON, kein anderer Text.`;
         body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 1000, messages: [{ role: "user", content: prompt }] }),
       });
       const d = await res.json();
-      const text = d.content?.[0]?.text;
-      if (!text) throw new Error("Keine Antwort");
+      const txt = d.content?.[0]?.text;
+      if (!txt) throw new Error("Keine Antwort von KI");
 
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error("Kein JSON");
+      const jsonMatch = txt.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error("Kein JSON in Antwort");
       const ki = JSON.parse(jsonMatch[0]);
 
+      // Eintrag sicherstellen (insert falls nicht vorhanden)
+      let eintragsId = eintrag?.id;
+      if (!eintragsId) {
+        const { data: neu } = await supabase.from("bautagebuch_eintraege").insert([{
+          baustelle_id: selectedBS, datum,
+          mitarbeiter_anwesend: [], geraete: [],
+          erstellt_von: currentUser?.name || "KI",
+        }]).select().single();
+        if (neu) { eintragsId = neu.id; setEintrag({ ...neu, mitarbeiter_anwesend: [], geraete: [] }); }
+      }
+
       // Tageseintrag aktualisieren
-      const eintragsId = await ensureEintrag();
-      if (eintragsId && eintrag) {
-        const updated = {
-          ...eintrag,
-          notizen: eintrag.notizen ? eintrag.notizen + "\n\n[KI ergänzt]: " + ki.notizen : ki.notizen,
-          besonderheiten: ki.besonderheiten || eintrag.besonderheiten,
-          arbeitsbeginn: ki.arbeitsbeginn || eintrag.arbeitsbeginn,
-          arbeitsende: ki.arbeitsende || eintrag.arbeitsende,
+      if (eintragsId) {
+        const aktuellerEintrag = eintrag || {};
+        const updated: any = {
+          ...aktuellerEintrag,
+          id: eintragsId,
+          baustelle_id: selectedBS,
+          datum,
         };
+        if (ki.notizen) updated.notizen = (aktuellerEintrag as any).notizen
+          ? (aktuellerEintrag as any).notizen + "\n\n[KI " + new Date().toLocaleTimeString("de-DE", {hour:"2-digit",minute:"2-digit"}) + "]: " + ki.notizen
+          : ki.notizen;
+        if (ki.besonderheiten) updated.besonderheiten = ki.besonderheiten;
+        if (ki.arbeitsbeginn) updated.arbeitsbeginn = ki.arbeitsbeginn;
+        if (ki.arbeitsende) updated.arbeitsende = ki.arbeitsende;
+
         await supabase.from("bautagebuch_eintraege").update(updated).eq("id", eintragsId);
         setEintrag(updated);
       }
 
-      // Materialien aus Chat hinzufügen
-      if (ki.materialien && Array.isArray(ki.materialien)) {
-        const eintragsId2 = await ensureEintrag();
+      // Materialien speichern
+      if (ki.materialien?.length) {
         for (const m of ki.materialien) {
           if (!m.materialart) continue;
-          const p: any = { baustelle_id: selectedBS, datum, materialart: m.materialart, status: m.status || "verbaut", erstellt_von: "KI-Assistent" };
-          if (eintragsId2) p.eintrag_id = eintragsId2;
-          if (m.menge) p.menge = m.menge;
-          if (m.einheit) p.einheit = m.einheit;
-          if (m.einbauort) p.einbauort = m.einbauort;
+          const p: any = {
+            baustelle_id: selectedBS, datum,
+            materialart: m.materialart,
+            status: m.status || "verbaut",
+            erstellt_von: "KI-Assistent",
+          };
+          if (eintragsId) p.eintrag_id = eintragsId;
+          if (m.menge)    p.menge = m.menge;
+          if (m.einheit)  p.einheit = m.einheit;
+          if (m.einbauort && m.einbauort !== "null") p.einbauort = m.einbauort;
           const { data: neu } = await supabase.from("bautagebuch_material").insert([p]).select().single();
-          if (neu) setMaterialien(ms => [...ms, { ...p, id: neu.id }]);
+          if (neu) setMaterialien((ms: any[]) => [...ms, { ...p, id: neu.id }]);
         }
       }
 
@@ -334,10 +354,15 @@ Antworte NUR mit dem JSON, kein anderer Text.`;
       for (const n of unverarbeitet) {
         if (n.id) await supabase.from("chat_nachrichten").update({ ki_verarbeitet: true }).eq("id", n.id);
       }
-      setNachrichten(ns => ns.map(n => unverarbeitet.find(u => u.id === n.id) ? { ...n, ki_verarbeitet: true } : n));
+      setNachrichten((ns: any[]) => ns.map(n =>
+        unverarbeitet.find((u: any) => u.id === n.id) ? { ...n, ki_verarbeitet: true } : n
+      ));
+
+      alert(`✓ KI hat ${unverarbeitet.length} Nachrichten verarbeitet!`);
 
     } catch (e: any) {
       console.error("KI Fehler:", e);
+      alert("KI-Fehler: " + e.message);
     }
     setKiLaeuft(false);
   }
@@ -836,6 +861,7 @@ function ChatTab({ bsId, datum, nachrichten, setNachrichten, currentUser, rolle,
     if (!text.trim() || sending) return;
     setSending(true);
     const nachrichtText = text.trim();
+    setText("");
 
     const n: ChatNachricht = {
       baustelle_id: bsId,
@@ -846,20 +872,25 @@ function ChatTab({ bsId, datum, nachrichten, setNachrichten, currentUser, rolle,
       typ: "text",
       ki_verarbeitet: false,
     };
-    const { data: neu } = await supabase.from("chat_nachrichten").insert([n]).select().single();
-    const eigeneNachricht = neu ? { ...n, id: neu.id, created_at: neu.created_at } : n;
-    setNachrichten((ns: any[]) => [...ns, eigeneNachricht]);
-    setText("");
-    setSending(false);
 
-    // Sascha antwortet
-    saschaAntwortet(nachrichtText, nachrichten);
+    const { data: neu } = await supabase.from("chat_nachrichten").insert([n]).select().single();
+    const eigene = neu ? { ...n, id: neu.id, created_at: neu.created_at } : { ...n };
+
+    // State updaten und dann Sascha antworten lassen
+    setNachrichten((ns: any[]) => {
+      const aktualisiert = [...ns, eigene];
+      // Sascha antwortet mit dem aktuellen Verlauf
+      setTimeout(() => saschaAntwortet(nachrichtText, aktualisiert), 0);
+      return aktualisiert;
+    });
+
+    setSending(false);
   }
 
   async function saschaAntwortet(userText: string, verlaufNachrichten: any[]) {
     setSaschaTyping(true);
 
-    const verlauf = verlaufNachrichten.slice(-10).map((n: any) =>
+    const verlauf = verlaufNachrichten.slice(-12).map((n: any) =>
       `${n.absender}: ${n.text || "[Foto gesendet]"}`
     ).join("\n");
     const prompt = `Du bist Sascha, ein freundlicher und kompetenter digitaler Bautagebuch-Assistent.
