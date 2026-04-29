@@ -7,7 +7,7 @@ import { MaterialTab }  from "./bautagebuch/MaterialTab";
 import { FotosTab }     from "./bautagebuch/FotosTab";
 import { UebersichtTab } from "./bautagebuch/UebersichtTab";
 
-export function BautagebuchTab({ data, currentUser, rolle }: any) {
+export function BautagebuchTab({ data, currentUser, rolle, callAI }: any) {
   const [selectedBS,  setSelectedBS]  = useState<number | null>(null);
   const [datum,       setDatum]       = useState(new Date().toISOString().split("T")[0]);
   const [activeTab,   setActiveTab]   = useState<"chat" | "tageslog" | "material" | "fotos" | "uebersicht">("chat");
@@ -243,7 +243,7 @@ export function BautagebuchTab({ data, currentUser, rolle }: any) {
         ) : (
           <>
             {activeTab === "chat" && (
-              <ChatTab bsId={selectedBS} bsName={bs?.name || ""} datum={datum} currentUser={currentUser} rolle={rolle} />
+              <ChatTab bsId={selectedBS} bsName={bs?.name || ""} datum={datum} currentUser={currentUser} rolle={rolle} callAI={callAI} />
             )}
             {activeTab === "tageslog" && (
               <TageslogTab eintrag={eintrag} setEintrag={setEintrag} data={data} currentUser={currentUser} isMobile={isMobile} />
