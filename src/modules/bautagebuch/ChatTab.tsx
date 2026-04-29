@@ -15,7 +15,7 @@ interface Nachricht {
   created_at?: string;
 }
 
-// Direkter API-Call mit eigenem Key
+// Direkter API-Call mit eigenem Key!
 async function kiAPI(prompt: string, systemPrompt?: string): Promise<string> {
   const apiKey = import.meta.env.VITE_ANTHROPIC_KEY;
   if (!apiKey) throw new Error("Kein API-Key konfiguriert (VITE_ANTHROPIC_KEY)");
