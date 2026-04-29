@@ -15,7 +15,7 @@ interface Nachricht {
   created_at?: string;
 }
 
-export function ChatTab({ bsId, bsName, datum, currentUser, rolle }: any) {
+export function ChatTab({ bsId, bsName, datum, currentUser, rolle, callAI }: any) {
   const [nachrichten, setNachrichten] = useState<Nachricht[]>([]);
   const [text,          setText]          = useState("");
   const [sending,       setSending]       = useState(false);
@@ -143,24 +143,13 @@ Reagiere natürlich. Bestätige kurz wenn Material/Arbeiten erwähnt. Stelle max
 Maximal 2-3 kurze Sätze. Kein Roboter-Ton. Kein Markdown.`;
 
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "anthropic-dangerous-direct-browser-ipc": "true",
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 150,
-          messages: [{ role: "user", content: prompt }],
-        }),
+      let antwort = "";
+      await new Promise<void>((resolve) => {
+        callAI(prompt, (txt: string) => { antwort = txt; resolve(); }, () => {});
       });
-      const d = await res.json();
-      const antwort = d.content?.[0]?.text?.trim();
-      if (!antwort) return;
 
-      // Kurze natürliche Pause
-      await new Promise(r => setTimeout(r, 500 + Math.random() * 500));
+      if (!antwort || antwort.startsWith("Fehler")) return;
+      await new Promise(r => setTimeout(r, 400));
 
       const sascha: Nachricht = {
         baustelle_id: bsId, datum,
@@ -171,7 +160,6 @@ Maximal 2-3 kurze Sätze. Kein Roboter-Ton. Kein Markdown.`;
       };
       const { data: neu } = await supabase.from("chat_nachrichten").insert([sascha]).select().single();
       if (neu) setNachrichten(prev => [...prev, { ...sascha, id: neu.id, created_at: neu.created_at }]);
-
     } catch (e) {
       console.error("Sascha Fehler:", e);
     } finally {
@@ -200,18 +188,13 @@ Antworte NUR mit diesem JSON:
 }`;
 
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "anthropic-dangerous-direct-browser-ipc": "true",
-        },
-        body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 800, messages: [{ role: "user", content: prompt }] }),
+      let kiTxt = "";
+      await new Promise<void>((resolve) => {
+        callAI(prompt, (txt: string) => { kiTxt = txt; resolve(); }, () => {});
       });
-      const d = await res.json();
-      const txt = d.content?.[0]?.text || "";
-      const match = txt.match(/\{[\s\S]*\}/);
-      if (!match) throw new Error("Kein JSON in Antwort");
+
+      const match = kiTxt.match(/\{[\s\S]*\}/);
+      if (!match) throw new Error("Kein JSON in Antwort: " + kiTxt.slice(0, 100));
       const ki = JSON.parse(match[0]);
 
       // Eintrag laden oder anlegen
@@ -261,7 +244,6 @@ Antworte NUR mit diesem JSON:
         zuVerarbeiten.find(u => u.id === n.id) ? { ...n, ki_verarbeitet: true } : n
       ));
       alert(`✓ ${zuVerarbeiten.length} Nachrichten verarbeitet! Tageslog und Material aktualisiert.`);
-
     } catch (e: any) {
       alert("Fehler: " + e.message);
     }
