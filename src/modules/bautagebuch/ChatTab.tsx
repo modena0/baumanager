@@ -15,33 +15,22 @@ interface Nachricht {
   created_at?: string;
 }
 
-// Direkter API-Call mit eigenem Key!
-async function kiAPI(prompt: string, systemPrompt?: string): Promise<string> {
-  const apiKey = import.meta.env.VITE_ANTHROPIC_KEY;
-  if (!apiKey) throw new Error("Kein API-Key konfiguriert (VITE_ANTHROPIC_KEY)");
+// API-Call über Supabase Edge Function (kein CORS Problem)
+const SUPABASE_URL = "https://npcygxhgwodmnqjwjnp.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wY3lneGhnd3FvZG1ucWp3am5wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDM0MjMwNTMsImV4cCI6MjA1ODk5OTA1M30.qGTbXGFbMrMBSRPe7j-P7OPBbmPLPQlfLKJeNgYNnEE";
 
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+async function kiAPI(prompt: string, system?: string): Promise<string> {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/ki_chat`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
+      "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
     },
-    body: JSON.stringify({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 300,
-      system: systemPrompt || "Du bist Sascha, ein Bautagebuch-Assistent.",
-      messages: [{ role: "user", content: prompt }],
-    }),
+    body: JSON.stringify({ prompt, system }),
   });
-
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`API Fehler ${res.status}: ${err.slice(0, 100)}`);
-  }
-
+  if (!res.ok) throw new Error(`Edge Function Fehler ${res.status}`);
   const d = await res.json();
-  return d.content?.[0]?.text?.trim() || "Keine Antwort";
+  return d.text || "Keine Antwort";
 }
 
 export function ChatTab({ bsId, bsName, datum, currentUser, rolle }: any) {
