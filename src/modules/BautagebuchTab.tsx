@@ -690,6 +690,7 @@ Antworte NUR mit dem JSON, kein anderer Text.`;
               kiLaeuft={kiLaeuft}
               onKiVerarbeitung={kiVerarbeitung}
               komprimieren={komprimieren}
+              bsName={bs?.name || ""}
             />
           )}
 
@@ -817,35 +818,109 @@ Antworte NUR mit dem JSON, kein anderer Text.`;
 }
 
 // ── Chat Tab ───────────────────────────────────────────────────────────────────
-function ChatTab({ bsId, datum, nachrichten, setNachrichten, currentUser, rolle, kiLaeuft, onKiVerarbeitung, komprimieren }: any) {
+function ChatTab({ bsId, datum, nachrichten, setNachrichten, currentUser, rolle, kiLaeuft, onKiVerarbeitung, komprimieren, bsName }: any) {
   const [text,        setText]        = useState("");
   const [sending,     setSending]     = useState(false);
   const [fotoSending, setFotoSending] = useState(false);
+  const [saschaTyping, setSaschaTyping] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const isMobile = window.innerWidth < 768;
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [nachrichten]);
+  }, [nachrichten, saschaTyping]);
 
-  const unverarbeitet = nachrichten.filter((n: any) => !n.ki_verarbeitet).length;
+  const unverarbeitet = nachrichten.filter((n: any) => !n.ki_verarbeitet && n.absender !== "Sascha").length;
 
   async function sendText() {
     if (!text.trim() || sending) return;
     setSending(true);
+    const nachrichtText = text.trim();
+
     const n: ChatNachricht = {
       baustelle_id: bsId,
       datum,
-      text: text.trim(),
+      text: nachrichtText,
       absender: currentUser?.name || "Unbekannt",
       absender_rolle: rolle,
       typ: "text",
       ki_verarbeitet: false,
     };
     const { data: neu } = await supabase.from("chat_nachrichten").insert([n]).select().single();
-    if (neu) setNachrichten((ns: any[]) => [...ns, { ...n, id: neu.id, created_at: neu.created_at }]);
+    const eigeneNachricht = neu ? { ...n, id: neu.id, created_at: neu.created_at } : n;
+    setNachrichten((ns: any[]) => [...ns, eigeneNachricht]);
     setText("");
     setSending(false);
+
+    // Sascha antwortet
+    saschaAntwortet(nachrichtText, nachrichten);
+  }
+
+  async function saschaAntwortet(userText: string, verlaufNachrichten: any[]) {
+    setSaschaTyping(true);
+
+    const verlauf = verlaufNachrichten.slice(-10).map((n: any) =>
+      `${n.absender}: ${n.text || "[Foto gesendet]"}`
+    ).join("\n");
+
+    const prompt = `Du bist Sascha, ein freundlicher und kompetenter digitaler Bautagebuch-Assistent.
+Du bist direkt auf der Baustelle "${bsName}" dabei und hilfst dem Team alle relevanten Infos für das Bautagebuch zu erfassen.
+Du kommunizierst wie ein erfahrener Kollege – locker, direkt, auf Deutsch, kurz und hilfreich.
+Du bist kein Roboter – du bist ein Kollege der zufällig sehr gut mit Daten umgehen kann.
+
+DATUM: ${datum}
+BISHERIGER VERLAUF:
+${verlauf}
+
+NEUE NACHRICHT von ${currentUser?.name || "Mitarbeiter"} (${rolle}):
+"${userText}"
+
+REGELN:
+- Reagiere natürlich und menschlich – wie ein Kollege
+- Wenn Material/Arbeiten erwähnt: kurz bestätigen was du erfasst hast ("Alright, trage ich ein.")
+- Stelle maximal EINE Rückfrage wenn wichtige Info fehlt (Menge? Einbauort? Lieferant?)
+- Bei Problemen/Schäden: kurz nachfragen was passiert ist
+- Bei Foto: frage was drauf ist falls unklar
+- Bei Smalltalk: antworte locker und kurz
+- NIEMALS mehr als 2-3 Sätze
+- KEINE Aufzählungen, KEINE Formatierung, NUR normaler Text
+
+Antworte jetzt als Sascha:`;
+
+    try {
+      // Realistische Verzögerung (Sascha "tippt")
+      await new Promise(r => setTimeout(r, 600 + Math.random() * 800));
+
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 150,
+          messages: [{ role: "user", content: prompt }],
+        }),
+      });
+      const d = await res.json();
+      const antwort = d.content?.[0]?.text?.trim();
+      if (!antwort) return;
+
+      const saschaMsg: ChatNachricht = {
+        baustelle_id: bsId,
+        datum,
+        text: antwort,
+        absender: "Sascha",
+        absender_rolle: "KI-Assistent",
+        typ: "text",
+        ki_verarbeitet: true,
+      };
+      const { data: sNeu } = await supabase.from("chat_nachrichten").insert([saschaMsg]).select().single();
+      if (sNeu) setNachrichten((ns: any[]) => [...ns, { ...saschaMsg, id: sNeu.id, created_at: sNeu.created_at }]);
+
+    } catch (e) {
+      console.error("Sascha Fehler:", e);
+    } finally {
+      setSaschaTyping(false);
+    }
   }
 
   async function sendFoto(files: FileList, capture: boolean) {
@@ -878,13 +953,17 @@ function ChatTab({ bsId, datum, nachrichten, setNachrichten, currentUser, rolle,
   }
 
   const getRolleColor = (r: string) => {
+    if (r === "KI-Assistent") return "#9C27B0";
     if (r === "admin" || r === "chef") return "#7986CB";
     if (r === "polier") return "#BA7517";
     if (r === "baustellen_leitung") return "#E24B4A";
     return ACCENT;
   };
 
-  const getInitials = (name: string) => name.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase();
+  const getInitials = (name: string) => {
+    if (name === "Sascha") return "S";
+    return name.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase();
+  };
 
   const formatTime = (iso?: string) => {
     if (!iso) return "";
@@ -897,16 +976,18 @@ function ChatTab({ bsId, datum, nachrichten, setNachrichten, currentUser, rolle,
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
 
-      {/* KI Status Banner */}
-      {unverarbeitet > 0 && (
-        <div style={{ padding: "6px 12px", background: "#f3e5f5", borderRadius: 8, marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
-          <span style={{ fontSize: 11, color: "#9C27B0" }}>✦ {unverarbeitet} Nachricht{unverarbeitet > 1 ? "en" : ""} noch nicht von KI verarbeitet</span>
-          <button onClick={onKiVerarbeitung} disabled={kiLaeuft}
-            style={{ fontSize: 11, padding: "3px 10px", borderRadius: 6, border: "1px solid #9C27B0", background: "#fff", color: "#9C27B0", cursor: kiLaeuft ? "not-allowed" : "pointer", opacity: kiLaeuft ? 0.6 : 1 }}>
-            {kiLaeuft ? "⏳ Läuft..." : "✦ Jetzt verarbeiten"}
-          </button>
+      {/* Sascha Status */}
+      <div style={{ padding: "8px 12px", background: "#f3e5f5", borderRadius: 10, marginBottom: 8, display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+        <div style={{ width: 28, height: 28, borderRadius: "50%", background: "#9C27B0", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#fff", flexShrink: 0 }}>S</div>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: "#9C27B0" }}>Sascha – KI-Assistent</div>
+          <div style={{ fontSize: 10, color: "#aaa" }}>Schreib einfach drauf los – ich erfasse alles automatisch ins Bautagebuch</div>
         </div>
-      )}
+        <button onClick={onKiVerarbeitung} disabled={kiLaeuft}
+          style={{ marginLeft: "auto", fontSize: 10, padding: "3px 8px", borderRadius: 6, border: "1px solid #9C27B0", background: "#fff", color: "#9C27B0", cursor: kiLaeuft ? "not-allowed" : "pointer", opacity: kiLaeuft ? 0.6 : 1, flexShrink: 0 }}>
+          {kiLaeuft ? "⏳" : "✦ Verarbeiten"}
+        </button>
+      </div>
 
       {/* Nachrichten */}
       <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "8px 0", display: "flex", flexDirection: "column", gap: 4 }}>
@@ -927,8 +1008,8 @@ function ChatTab({ bsId, datum, nachrichten, setNachrichten, currentUser, rolle,
 
               {/* Avatar – nur wenn erster von diesem Sender */}
               {!ichBinSender && (
-                <div style={{ width: 30, height: 30, borderRadius: "50%", background: vorherigerSelberSender ? "transparent" : getRolleColor(n.absender_rolle || ""), display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
-                  {!vorherigerSelberSender && getInitials(n.absender)}
+                <div style={{ width: 30, height: 30, borderRadius: "50%", background: vorherigerSelberSender ? "transparent" : n.absender === "Sascha" ? ACCENT : getRolleColor(n.absender_rolle || ""), display: "flex", alignItems: "center", justifyContent: "center", fontSize: n.absender === "Sascha" ? 15 : 11, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
+                  {!vorherigerSelberSender && (n.absender === "Sascha" ? "🤖" : getInitials(n.absender))}
                 </div>
               )}
 
@@ -937,19 +1018,20 @@ function ChatTab({ bsId, datum, nachrichten, setNachrichten, currentUser, rolle,
 
                 {/* Name + Rolle – nur wenn erster von diesem Sender und nicht ich */}
                 {!ichBinSender && !vorherigerSelberSender && (
-                  <div style={{ fontSize: 10, color: getRolleColor(n.absender_rolle || ""), fontWeight: 600, marginBottom: 2, marginLeft: 4 }}>
-                    {n.absender}
-                    {n.absender_rolle && <span style={{ fontWeight: 400, color: "#bbb" }}> · {n.absender_rolle}</span>}
+                  <div style={{ fontSize: 10, color: n.absender === "Sascha" ? ACCENT : getRolleColor(n.absender_rolle || ""), fontWeight: 600, marginBottom: 2, marginLeft: 4 }}>
+                    {n.absender === "Sascha" ? "✦ Sascha · KI-Assistent" : n.absender}
+                    {n.absender_rolle && n.absender !== "Sascha" && <span style={{ fontWeight: 400, color: "#bbb" }}> · {n.absender_rolle}</span>}
                   </div>
                 )}
 
                 <div style={{
-                  background: ichBinSender ? ACCENT : "#fff",
-                  color: ichBinSender ? "#fff" : "#222",
+                  background: ichBinSender ? ACCENT : n.absender === "Sascha" ? "#f3e5f5" : "#fff",
+                  color: ichBinSender ? "#fff" : n.absender === "Sascha" ? "#6a1b9a" : "#222",
                   borderRadius: ichBinSender ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
                   padding: n.typ === "foto" ? "4px" : "10px 14px",
                   boxShadow: "0 1px 4px rgba(0,0,0,0.10)",
                   maxWidth: "100%",
+                  border: n.absender === "Sascha" ? "1px solid #ce93d8" : "none",
                 }}>
                   {n.typ === "text" && (
                     <div style={{ fontSize: 13, lineHeight: 1.45, wordBreak: "break-word" }}>{n.text}</div>
@@ -970,6 +1052,22 @@ function ChatTab({ bsId, datum, nachrichten, setNachrichten, currentUser, rolle,
           );
         })}
         <div ref={chatEndRef} />
+
+        {/* Sascha tippt... Indikator */}
+        {saschaTyping && (
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 6, padding: "4px 12px" }}>
+            <div style={{ width: 30, height: 30, borderRadius: "50%", background: "linear-gradient(135deg, #4DB6AC, #1D9E75)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>🤖</div>
+            <div style={{ background: "#fff", borderRadius: "18px 18px 18px 4px", padding: "10px 14px", boxShadow: "0 1px 4px rgba(0,0,0,0.10)" }}>
+              <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                {[0,1,2].map(i => (
+                  <div key={i} style={{ width: 7, height: 7, borderRadius: "50%", background: ACCENT, opacity: 0.7,
+                    animation: `bounce 1.2s ease-in-out ${i*0.2}s infinite` }} />
+                ))}
+              </div>
+            </div>
+            <style>{`@keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-5px)} }`}</style>
+          </div>
+        )}
       </div>
 
       {/* Eingabe */}
