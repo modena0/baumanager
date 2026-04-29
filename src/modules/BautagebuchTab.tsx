@@ -243,7 +243,7 @@ export function BautagebuchTab({ data, currentUser, rolle, callAI }: any) {
         ) : (
           <>
             {activeTab === "chat" && (
-              <ChatTab bsId={selectedBS} bsName={bs?.name || ""} datum={datum} currentUser={currentUser} rolle={rolle} callAI={callAI} />
+              <ChatTab bsId={selectedBS} bsName={bs?.name || ""} datum={datum} currentUser={currentUser} rolle={rolle} />
             )}
             {activeTab === "tageslog" && (
               <TageslogTab eintrag={eintrag} setEintrag={setEintrag} data={data} currentUser={currentUser} isMobile={isMobile} />

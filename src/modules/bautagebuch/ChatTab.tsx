@@ -15,19 +15,36 @@ interface Nachricht {
   created_at?: string;
 }
 
-// Hilfsfunktion: API-Call über callAI aus App.tsx (funktioniert in jedem Browser)
-function callAIPromise(callAI: Function, prompt: string): Promise<string> {
-  return new Promise((resolve) => {
-    let result = "";
-    callAI(
-      prompt,
-      (txt: string) => { result = txt; },
-      (loading: boolean) => { if (!loading && result) resolve(result); }
-    );
+// Direkter API-Call mit eigenem Key
+async function kiAPI(prompt: string, systemPrompt?: string): Promise<string> {
+  const apiKey = import.meta.env.VITE_ANTHROPIC_KEY;
+  if (!apiKey) throw new Error("Kein API-Key konfiguriert (VITE_ANTHROPIC_KEY)");
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 300,
+      system: systemPrompt || "Du bist Sascha, ein Bautagebuch-Assistent.",
+      messages: [{ role: "user", content: prompt }],
+    }),
   });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`API Fehler ${res.status}: ${err.slice(0, 100)}`);
+  }
+
+  const d = await res.json();
+  return d.content?.[0]?.text?.trim() || "Keine Antwort";
 }
 
-export function ChatTab({ bsId, bsName, datum, currentUser, rolle, callAI }: any) {
+export function ChatTab({ bsId, bsName, datum, currentUser, rolle }: any) {
   const [nachrichten, setNachrichten] = useState<Nachricht[]>([]);
   const [text,         setText]         = useState("");
   const [sending,      setSending]      = useState(false);
@@ -132,22 +149,19 @@ export function ChatTab({ bsId, bsName, datum, currentUser, rolle, callAI }: any
       .map(n => `${n.absender}: ${n.text || "[Foto]"}`)
       .join("\n");
 
-    const prompt = `Du bist Sascha, ein KI-Bautagebuch-Assistent auf Baustelle "${bsName}" (${datum}).
-Antworte wie ein erfahrener Kollege: locker, kurz, direkt, auf Deutsch.
-Bestätige kurz was du verstanden hast. Stelle maximal EINE Rückfrage wenn wichtige Info fehlt.
-Maximal 2-3 Sätze. Kein Markdown.
-
+    const prompt = `BAUSTELLE: ${bsName} | DATUM: ${datum}
 VERLAUF:
 ${verlaufText}
 
-NEUE NACHRICHT von ${ichBin || "Mitarbeiter"}: "${userText}"`;
+NEUE NACHRICHT von ${ichBin || "Mitarbeiter"}: "${userText}"
+
+Reagiere natürlich. Bestätige kurz was du verstanden hast. Stelle maximal EINE Rückfrage wenn wichtige Info fehlt. Max 2-3 Sätze.`;
 
     try {
-      const antwort = await callAIPromise(callAI, prompt);
-      if (!antwort || antwort.startsWith("Fehler")) {
-        console.error("Sascha Fehler:", antwort);
-        return;
-      }
+      const antwort = await kiAPI(
+        prompt,
+        "Du bist Sascha, ein freundlicher Bautagebuch-Assistent. Antworte wie ein erfahrener Kollege: locker, kurz, direkt, auf Deutsch. Kein Markdown."
+      );
 
       await new Promise(r => setTimeout(r, 400));
 
@@ -158,8 +172,8 @@ NEUE NACHRICHT von ${ichBin || "Mitarbeiter"}: "${userText}"`;
       const { data: neu } = await supabase.from("chat_nachrichten").insert([sascha]).select().single();
       if (neu) setNachrichten(prev => [...prev, { ...sascha, id: neu.id, created_at: neu.created_at }]);
 
-    } catch (e) {
-      console.error("Sascha Fehler:", e);
+    } catch (e: any) {
+      console.error("Sascha:", e.message);
     } finally {
       setSaschaTyping(false);
     }
@@ -170,21 +184,14 @@ NEUE NACHRICHT von ${ichBin || "Mitarbeiter"}: "${userText}"`;
     if (!zuVerarbeiten.length) { alert("Keine neuen Nachrichten zum Verarbeiten."); return; }
     setKiLaeuft(true);
 
-    const prompt = `Analysiere diese Chat-Nachrichten von Baustelle "${bsName}" (${datum}).
-Antworte NUR mit diesem JSON (kein anderer Text):
-{
-  "notizen": "Zusammenfassung der Arbeiten",
-  "besonderheiten": "Probleme oder null",
-  "arbeitsbeginn": "HH:MM oder null",
-  "arbeitsende": "HH:MM oder null",
-  "materialien": [{"materialart": "Name", "menge": 0, "einheit": "m³", "einbauort": "Ort", "status": "verbaut"}]
-}
+    const prompt = `Analysiere diese Nachrichten von Baustelle "${bsName}" (${datum}) und antworte NUR mit validem JSON:
+{"notizen":"Zusammenfassung","besonderheiten":null,"arbeitsbeginn":null,"arbeitsende":null,"materialien":[{"materialart":"Name","menge":0,"einheit":"m³","einbauort":"Ort","status":"verbaut"}]}
 
 NACHRICHTEN:
 ${zuVerarbeiten.map(n => `${n.absender}: ${n.text || "[Foto]"}`).join("\n")}`;
 
     try {
-      const kiTxt = await callAIPromise(callAI, prompt);
+      const kiTxt = await kiAPI(prompt, "Extrahiere Baudaten als JSON. Antworte NUR mit validem JSON.");
       const match = kiTxt.match(/\{[\s\S]*\}/);
       if (!match) throw new Error("Kein JSON: " + kiTxt.slice(0, 100));
       const ki = JSON.parse(match[0]);
