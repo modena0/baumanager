@@ -5,18 +5,6 @@ const cors = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type"
 }
 
-// Korrekte base64 Konvertierung für große Dateien in Deno
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer)
-  const chunkSize = 8192
-  let binary = ""
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, i + chunkSize)
-    binary += String.fromCharCode(...chunk)
-  }
-  return btoa(binary)
-}
-
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors })
 
@@ -25,31 +13,16 @@ serve(async (req) => {
 
     const content: any[] = []
 
-    // PDFs von öffentlicher URL laden
+    // PDFs direkt per URL an Claude schicken (kein base64 nötig!)
     if (pdf_urls && pdf_urls.length > 0) {
       for (const url of pdf_urls) {
-        try {
-          console.log("Lade PDF von:", url)
-          const pdfRes = await fetch(url)
-          if (!pdfRes.ok) {
-            console.error("PDF laden fehlgeschlagen:", pdfRes.status, url)
-            continue
-          }
-          const pdfBuffer = await pdfRes.arrayBuffer()
-          console.log("PDF geladen, Größe:", pdfBuffer.byteLength, "bytes")
-          const pdfBase64 = arrayBufferToBase64(pdfBuffer)
-          console.log("Base64 Länge:", pdfBase64.length)
-          content.push({
-            type: "document",
-            source: {
-              type: "base64",
-              media_type: "application/pdf",
-              data: pdfBase64,
-            },
-          })
-        } catch (e: any) {
-          console.error("PDF Fehler:", e.message)
-        }
+        content.push({
+          type: "document",
+          source: {
+            type: "url",
+            url: url,
+          },
+        })
       }
     }
 
@@ -69,8 +42,6 @@ serve(async (req) => {
 
     content.push({ type: "text", text: prompt })
 
-    console.log("Content blocks:", content.length, "- davon PDFs:", content.filter(c => c.type === "document").length)
-
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -88,8 +59,6 @@ serve(async (req) => {
     })
 
     const d = await res.json()
-    console.log("Anthropic response type:", d.type, "- error:", d.error?.message)
-
     if (d.error) {
       return new Response(JSON.stringify({ error: d.error.message }), {
         status: 500, headers: { ...cors, "Content-Type": "application/json" }
@@ -101,7 +70,6 @@ serve(async (req) => {
       { headers: { ...cors, "Content-Type": "application/json" } }
     )
   } catch (e: any) {
-    console.error("Fehler:", e.message)
     return new Response(
       JSON.stringify({ error: e.message }),
       { status: 500, headers: { ...cors, "Content-Type": "application/json" } }
