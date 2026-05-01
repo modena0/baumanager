@@ -15,7 +15,6 @@ interface Nachricht {
   created_at?: string;
 }
 
-// API-Call über Supabase Edge Function (kein CORS Problem)
 const SUPABASE_URL = "https://npcygxhgwqodmnqjwjnp.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wY3lneGhnd3FvZG1ucWp3am5wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY0MzA5MDksImV4cCI6MjA5MjAwNjkwOX0.VCW_I_W9SVGA5DPi5R_q7leiy5t335sVucM75eYiWWY";
 
@@ -202,8 +201,6 @@ Antworte NUR mit diesem JSON (alle Felder ausfüllen wenn möglich, notizen IMME
 {"notizen":"Vollständige Zusammenfassung aller ausgeführten Arbeiten, Materialien, Mengen, Orte und Mitarbeiter","besonderheiten":"Besonderheiten oder null","arbeitsbeginn":"HH:MM oder null","arbeitsende":"HH:MM oder null","materialien":[{"materialart":"Materialname","menge":1.0,"einheit":"m³","einbauort":"Ort","status":"verbaut"}]}
 
 WICHTIG: notizen muss IMMER eine detaillierte Zusammenfassung enthalten!`;
-NACHRICHTEN:
-${zuVerarbeiten.map(n => `${n.absender}: ${n.text || "[Foto]"}`).join("\n")}`;
 
     try {
       const kiTxt = await kiAPI(prompt, "Du bist ein präziser Bautagebuch-Assistent. Extrahiere ALLE Informationen vollständig. Das Feld 'notizen' muss immer eine detaillierte deutsche Zusammenfassung der Arbeiten enthalten. Antworte NUR mit validem JSON, kein Markdown.");
@@ -241,6 +238,20 @@ ${zuVerarbeiten.map(n => `${n.absender}: ${n.text || "[Foto]"}`).join("\n")}`;
           if (m.einheit) mp.einheit = m.einheit;
           if (m.einbauort && m.einbauort !== "null") mp.einbauort = m.einbauort;
           await supabase.from("bautagebuch_material").insert([mp]);
+        }
+
+        // Fotos aus Chat in bautagebuch_fotos kopieren
+        for (const n of zuVerarbeiten) {
+          if (n.typ === "foto" && n.foto_url) {
+            await supabase.from("bautagebuch_fotos").insert([{
+              baustelle_id: bsId,
+              datum,
+              eintrag_id: eintr.id,
+              foto_url: n.foto_url,
+              beschreibung: "Aus Sascha-Chat übertragen",
+              erstellt_von: n.absender,
+            }]);
+          }
         }
       }
 
