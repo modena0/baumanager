@@ -16,7 +16,7 @@ interface Nachricht {
 }
 
 // API-Call über Supabase Edge Function (kein CORS Problem)
-const SUPABASE_URL = "https://npcygxhgwodmnqjwjnp.supabase.co";
+const SUPABASE_URL = "https://npcygxhgwqodmnqjwjnp.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wY3lneGhnd3FvZG1ucWp3am5wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDM0MjMwNTMsImV4cCI6MjA1ODk5OTA1M30.qGTbXGFbMrMBSRPe7j-P7OPBbmPLPQlfLKJeNgYNnEE";
 
 async function kiAPI(prompt: string, system?: string): Promise<string> {
