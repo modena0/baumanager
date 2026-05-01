@@ -46,35 +46,6 @@ interface Vorschau {
   annahmen: string[];
 }
 
-async function dateiZuBase64(file: File): Promise<{ type: string; data: string; media_type?: string; name: string }> {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const result = e.target?.result as string;
-      // base64 Teil extrahieren (nach "data:...;base64,")
-      const base64 = result.split(",")[1];
-      if (file.type === "application/pdf" || file.name.endsWith(".pdf")) {
-        resolve({ type: "pdf", data: base64, name: file.name });
-      } else if (file.type.startsWith("image/")) {
-        resolve({ type: "image", data: base64, media_type: file.type, name: file.name });
-      } else {
-        // Für GAEB/CSV als Text
-        resolve({ type: "text", data: atob(base64), name: file.name });
-      }
-    };
-    reader.readAsDataURL(file);
-  });
-}
-
-async function textDateiLesen(file: File): Promise<string> {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = (e) => resolve((e.target?.result as string)?.slice(0, 8000) || "");
-    reader.onerror = () => resolve(`[Fehler beim Lesen: ${file.name}]`);
-    reader.readAsText(file, "utf-8");
-  });
-}
-
 export function DokumentAnalyseTab({ data, currentUser, rolle }: any) {
   const [dateien,     setDateien]     = useState<File[]>([]);
   const [analyzing,   setAnalyzing]   = useState(false);
@@ -101,61 +72,99 @@ export function DokumentAnalyseTab({ data, currentUser, rolle }: any) {
     if (name.endsWith(".xlsx") || name.endsWith(".xls")) return "📊";
     if (name.endsWith(".x83") || name.endsWith(".x81") || name.endsWith(".gaeb")) return "📋";
     if (name.endsWith(".docx") || name.endsWith(".doc")) return "📝";
+    if (name.match(/\.(jpg|jpeg|png|gif|webp)$/i)) return "🖼";
     return "📁";
   }
 
-  function istTextDatei(file: File) {
+  function isPDF(file: File) {
+    return file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+  }
+
+  function isImage(file: File) {
+    return file.type.startsWith("image/");
+  }
+
+  function isText(file: File) {
     return file.name.endsWith(".x83") || file.name.endsWith(".x81") ||
       file.name.endsWith(".gaeb") || file.name.endsWith(".csv") || file.name.endsWith(".txt");
   }
 
-  function istBinaerDatei(file: File) {
-    return file.name.endsWith(".xlsx") || file.name.endsWith(".xls") ||
-      file.name.endsWith(".docx") || file.name.endsWith(".doc");
+  // PDF in Supabase Storage hochladen und öffentliche URL zurückgeben
+  async function pdfZuStorageUrl(file: File): Promise<string> {
+    const fileName = `analyse/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+    const { data: up, error } = await supabase.storage
+      .from("dokumente")
+      .upload(fileName, file, { upsert: true, contentType: "application/pdf" });
+
+    if (error) throw new Error(`PDF Upload fehlgeschlagen: ${error.message}`);
+    const { data: urlData } = supabase.storage.from("dokumente").getPublicUrl(fileName);
+    return urlData.publicUrl;
+  }
+
+  // Bild als base64
+  async function bildZuBase64(file: File): Promise<{ type: string; data: string; media_type: string; name: string }> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const result = e.target?.result as string;
+        const base64 = result.split(",")[1];
+        resolve({ type: "image", data: base64, media_type: file.type, name: file.name });
+      };
+      reader.onerror = () => reject(new Error(`Fehler beim Lesen: ${file.name}`));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // Textdatei lesen
+  async function textLesen(file: File): Promise<string> {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve((e.target?.result as string)?.slice(0, 8000) || "");
+      reader.onerror = () => resolve(`[Fehler: ${file.name}]`);
+      reader.readAsText(file, "utf-8");
+    });
   }
 
   async function analyseStarten() {
     if (dateien.length === 0) return;
     setAnalyzing(true);
     setVorschau(null);
-    setFortschritt("📂 Dateien werden eingelesen...");
+    setFortschritt("📂 Dateien werden vorbereitet...");
 
     try {
+      const pdf_urls: string[] = [];
       const dokumente: any[] = [];
-      const textTeile: string[] = [];
 
       for (const file of dateien) {
-        if (file.type === "application/pdf" || file.name.endsWith(".pdf")) {
-          setFortschritt(`📄 PDF wird geladen: ${file.name}...`);
-          const dok = await dateiZuBase64(file);
+        if (isPDF(file)) {
+          setFortschritt(`📤 PDF wird hochgeladen: ${file.name}...`);
+          const url = await pdfZuStorageUrl(file);
+          pdf_urls.push(url);
+        } else if (isImage(file)) {
+          setFortschritt(`🖼 Bild wird vorbereitet: ${file.name}...`);
+          const dok = await bildZuBase64(file);
           dokumente.push(dok);
-        } else if (file.type.startsWith("image/")) {
-          setFortschritt(`🖼 Bild wird geladen: ${file.name}...`);
-          const dok = await dateiZuBase64(file);
-          dokumente.push(dok);
-        } else if (istTextDatei(file)) {
-          setFortschritt(`📋 GAEB/Text wird gelesen: ${file.name}...`);
-          const text = await textDateiLesen(file);
-          textTeile.push(`=== ${file.name} ===\n${text}`);
-        } else if (istBinaerDatei(file)) {
-          textTeile.push(`[Excel/Word-Datei: ${file.name}, ${Math.round(file.size / 1024)} KB – Inhalt bitte manuell prüfen]`);
+        } else if (isText(file)) {
+          setFortschritt(`📋 Text wird gelesen: ${file.name}...`);
+          const text = await textLesen(file);
+          dokumente.push({ type: "text", data: text, name: file.name });
+        } else {
+          dokumente.push({ type: "text", data: `[${file.name}, ${Math.round(file.size / 1024)} KB]`, name: file.name });
         }
       }
 
-      setFortschritt("🤖 KI analysiert alle Dokumente...");
+      setFortschritt("🤖 KI liest und analysiert alle Dokumente...");
 
-      const prompt = `Du bist ein erfahrener Bauleiter und analysierst Projektunterlagen.
-Analysiere alle beigefügten Dokumente (PDFs, Bilder, Texte) vollständig und erstelle eine strukturierte digitale Baustellenplanung.
-
-${textTeile.length > 0 ? `ZUSÄTZLICHE TEXTDOKUMENTE:\n${textTeile.join("\n\n")}` : ""}
+      const prompt = `Du bist ein erfahrener Bauleiter und analysierst Projektunterlagen vollständig.
+Lies alle beigefügten PDFs und Dokumente sorgfältig durch und erstelle eine strukturierte digitale Baustellenplanung.
 
 ANALYSE-ANWEISUNGEN:
-1. Lies alle PDFs und Bilder vollständig durch – auch Bauablaufpläne, Lagepläne, Leistungsverzeichnisse
-2. Erkenne Bauabschnitte, Bereiche, FGUs, Schächte, Straßenzüge aus den Dokumenten
+1. Lies alle PDFs vollständig durch – auch Bauablaufpläne, Lagepläne, Leistungsverzeichnisse
+2. Erkenne Bauabschnitte, Bereiche, Bauphasen aus den Dokumenten
 3. Leite konkrete Aufgaben ab – verständlich für Vorarbeiter auf der Baustelle
-4. Weise LV-Positionen den passenden Aufgaben zu wenn vorhanden
+4. Erkenne Termine, Kalenderwochen, Bauphasen und deren Zeiträume
 5. Erkenne Materialien mit Mengen und Einheiten
-6. Erkenne Termine, Kalenderwochen, Fristen aus Bauablaufplänen
+6. Weise LV-Positionen den passenden Aufgaben zu wenn vorhanden
 7. Wenn Informationen fehlen, mache sinnvolle Annahmen und kennzeichne sie mit [ANNAHME]
 8. Priorisiere Aufgaben nach Bauablauf: was zuerst, was hängt voneinander ab
 
@@ -169,8 +178,8 @@ Antworte NUR mit einem validen JSON Objekt, kein Text davor oder danach:
   "ende": "YYYY-MM-DD oder null",
   "bereiche": [
     {
-      "name": "Bereichsname z.B. Bauabschnitt 1 oder FGU Nord",
-      "beschreibung": "Was wird hier gemacht",
+      "name": "Bereichsname z.B. Bauphase 1 oder Baufeld Mittelinsel",
+      "beschreibung": "Was wird hier gemacht und wann",
       "aufgaben": [
         {
           "id": "A001",
@@ -181,7 +190,7 @@ Antworte NUR mit einem validen JSON Objekt, kein Text davor oder danach:
           "erledigt": false,
           "lv_positionen": [{"nr": "1.1.1","beschreibung": "LV-Positionsbeschreibung","menge": 100,"einheit": "m","einheitspreis": 0}],
           "materialien": [{"name": "Materialname","menge": 100,"einheit": "m"}],
-          "termine": "z.B. KW 15-18 oder null",
+          "termine": "z.B. KW 16-17 oder 13.04.-20.04.2026 oder null",
           "annahme": "Beschreibung der Annahme wenn nötig sonst null"
         }
       ]
@@ -191,12 +200,20 @@ Antworte NUR mit einem validen JSON Objekt, kein Text davor oder danach:
   "annahmen": ["Liste aller gemachten Annahmen"]
 }`;
 
-      const body: any = { prompt, system: "Du bist ein erfahrener Bauleiter. Lies alle Dokumente vollständig. Antworte NUR mit validem JSON, kein Markdown.", max_tokens: 4000 };
+      const body: any = {
+        prompt,
+        system: "Du bist ein erfahrener Bauleiter. Lies alle Dokumente vollständig und detailliert. Antworte NUR mit validem JSON, kein Markdown.",
+        max_tokens: 4000,
+      };
+      if (pdf_urls.length > 0) body.pdf_urls = pdf_urls;
       if (dokumente.length > 0) body.dokumente = dokumente;
 
       const res = await fetch(`${SUPABASE_URL}/functions/v1/ki_chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SUPABASE_ANON_KEY}` },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+        },
         body: JSON.stringify(body),
       });
 
@@ -208,12 +225,12 @@ Antworte NUR mit einem validen JSON Objekt, kein Text davor oder danach:
 
       setFortschritt("🔍 Struktur wird aufbereitet...");
       const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error("KI hat kein gültiges JSON zurückgegeben");
+      if (!jsonMatch) throw new Error("KI hat kein gültiges JSON zurückgegeben: " + text.slice(0, 200));
 
       const result: Vorschau = JSON.parse(jsonMatch[0]);
-      result.bereiche = result.bereiche.map((b, bi) => ({
+      result.bereiche = (result.bereiche || []).map((b, bi) => ({
         ...b,
-        aufgaben: b.aufgaben.map((a, ai) => ({ ...a, id: a.id || `A${bi + 1}${ai + 1}` })),
+        aufgaben: (b.aufgaben || []).map((a, ai) => ({ ...a, id: a.id || `A${bi + 1}${String(ai + 1).padStart(2, "0")}` })),
       }));
 
       setVorschau(result);
@@ -290,12 +307,12 @@ Antworte NUR mit einem validen JSON Objekt, kein Text davor oder danach:
 
   const prioritaetFarbe = (p: string) => p === "hoch" ? "#E24B4A" : p === "mittel" ? "#BA7517" : "#888";
 
-  // ── UPLOAD BEREICH ────────────────────────────────────────────────────────────
+  // ── UPLOAD ────────────────────────────────────────────────────────────────────
   if (!vorschau) {
     return (
       <div>
         <div style={{ fontSize: 15, fontWeight: 700, color: "#222", marginBottom: 4 }}>🤖 Baustellenstruktur aus Dokumenten</div>
-        <div style={{ fontSize: 12, color: "#aaa", marginBottom: 20 }}>Lade Projektunterlagen hoch – KI liest PDFs vollständig und erstellt eine strukturierte Baustellenplanung</div>
+        <div style={{ fontSize: 12, color: "#aaa", marginBottom: 20 }}>PDFs werden in Supabase hochgeladen und von Claude vollständig gelesen – auch Bauablaufpläne und Lagepläne</div>
 
         {!kannAnalysieren ? (
           <div style={{ ...C.card, textAlign: "center", color: "#bbb", padding: 32 }}>Kein Zugriff für diese Rolle</div>
@@ -310,7 +327,7 @@ Antworte NUR mit einem validen JSON Objekt, kein Text davor oder danach:
               <div style={{ fontSize: 40, marginBottom: 10 }}>📂</div>
               <div style={{ fontSize: 14, fontWeight: 600, color: "#333", marginBottom: 4 }}>Dokumente hier ablegen</div>
               <div style={{ fontSize: 12, color: "#aaa", marginBottom: 4 }}>PDF, Excel (.xlsx), GAEB (.x83, .x81), Bilder</div>
-              <div style={{ fontSize: 11, color: ACCENT }}>✦ PDFs werden vollständig gelesen – auch Bauablaufpläne und Zeichnungen</div>
+              <div style={{ fontSize: 11, color: ACCENT }}>✦ PDFs werden vollständig gelesen – alle Seiten, Pläne, Bauablauf</div>
               <input ref={fileRef} type="file" multiple accept=".pdf,.xlsx,.xls,.x83,.x81,.gaeb,.docx,.doc,.csv,.txt,.jpg,.jpeg,.png"
                 style={{ display: "none" }} onChange={e => handleFiles(e.target.files)} />
             </div>
@@ -320,31 +337,27 @@ Antworte NUR mit einem validen JSON Objekt, kein Text davor oder danach:
                 <div style={{ fontSize: 13, fontWeight: 600, color: "#222", marginBottom: 10 }}>
                   {dateien.length} Datei{dateien.length !== 1 ? "en" : ""} ausgewählt
                 </div>
-                {dateien.map((f, i) => {
-                  const isPDF = f.type === "application/pdf" || f.name.endsWith(".pdf");
-                  const isImg = f.type.startsWith("image/");
-                  return (
-                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: "1px solid #f5f5f5" }}>
-                      <span style={{ fontSize: 18 }}>{getFileIcon(f.name)}</span>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 13, fontWeight: 500, color: "#222" }}>{f.name}</div>
-                        <div style={{ fontSize: 11, color: "#aaa" }}>
-                          {Math.round(f.size / 1024)} KB
-                          {isPDF && <span style={{ color: ACCENT, marginLeft: 6 }}>✦ wird vollständig gelesen</span>}
-                          {isImg && <span style={{ color: "#378ADD", marginLeft: 6 }}>🖼 Bild wird analysiert</span>}
-                        </div>
+                {dateien.map((f, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: "1px solid #f5f5f5" }}>
+                    <span style={{ fontSize: 18 }}>{getFileIcon(f.name)}</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 500, color: "#222" }}>{f.name}</div>
+                      <div style={{ fontSize: 11, color: "#aaa" }}>
+                        {Math.round(f.size / 1024)} KB
+                        {isPDF(f) && <span style={{ color: ACCENT, marginLeft: 6 }}>✦ wird vollständig gelesen</span>}
+                        {isImage(f) && <span style={{ color: "#378ADD", marginLeft: 6 }}>🖼 Bild wird analysiert</span>}
                       </div>
-                      <button onClick={() => removeFile(i)} style={{ background: "none", border: "none", cursor: "pointer", color: "#E24B4A", fontSize: 16, padding: "0 4px" }}>✕</button>
                     </div>
-                  );
-                })}
+                    <button onClick={() => removeFile(i)} style={{ background: "none", border: "none", cursor: "pointer", color: "#E24B4A", fontSize: 16 }}>✕</button>
+                  </div>
+                ))}
               </div>
             )}
 
-            {dateien.length > 0 && (
-              <button onClick={analyseStarten} disabled={analyzing}
-                style={{ ...C.btnP, width: "100%", padding: "14px", fontSize: 14, opacity: analyzing ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-                {analyzing ? fortschritt || "Analysiert..." : "✦ KI-Analyse starten"}
+            {dateien.length > 0 && !analyzing && (
+              <button onClick={analyseStarten}
+                style={{ ...C.btnP, width: "100%", padding: "14px", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                ✦ KI-Analyse starten
               </button>
             )}
 
@@ -352,11 +365,11 @@ Antworte NUR mit einem validen JSON Objekt, kein Text davor oder danach:
               <div style={{ ...C.card, marginTop: 16, textAlign: "center", padding: 24, background: "#f8fffe", border: "1px solid " + ACCENT + "44" }}>
                 <div style={{ fontSize: 28, marginBottom: 8 }}>🤖</div>
                 <div style={{ fontSize: 13, color: ACCENT, fontWeight: 500 }}>{fortschritt}</div>
-                <div style={{ fontSize: 11, color: "#aaa", marginTop: 6 }}>PDFs werden vollständig gelesen – kann 30-60 Sekunden dauern...</div>
+                <div style={{ fontSize: 11, color: "#aaa", marginTop: 6 }}>PDFs werden vollständig analysiert – kann 30-60 Sekunden dauern...</div>
               </div>
             )}
 
-            {fortschritt.startsWith("❌") && (
+            {fortschritt.startsWith("❌") && !analyzing && (
               <div style={{ ...C.card, marginTop: 16, padding: "12px 16px", background: "#fff3f3", border: "1px solid #E24B4A33" }}>
                 <div style={{ fontSize: 13, color: "#E24B4A" }}>{fortschritt}</div>
               </div>
@@ -365,8 +378,8 @@ Antworte NUR mit einem validen JSON Objekt, kein Text davor oder danach:
             <div style={{ ...C.card, marginTop: 16, padding: "12px 14px", background: "#f8f8ff" }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: "#555", marginBottom: 6 }}>💡 Tipps für beste Ergebnisse</div>
               <div style={{ fontSize: 11, color: "#777", lineHeight: 1.7 }}>
-                • <strong>PDF-Ausschreibung</strong> – wird vollständig gelesen, alle Seiten<br/>
-                • <strong>Bauablaufplan als PDF</strong> – Termine und Abschnitte werden erkannt<br/>
+                • <strong>PDF-Baubeschreibung</strong> – wird vollständig gelesen, alle Seiten inkl. Pläne<br/>
+                • <strong>Bauablaufplan als PDF</strong> – Termine und Bauphasen werden erkannt<br/>
                 • <strong>LV als GAEB (.x83)</strong> – Positionen werden Aufgaben zugewiesen<br/>
                 • <strong>Lagepläne als Bild</strong> – Bereiche werden aus der Karte abgeleitet<br/>
                 • Je mehr Dokumente, desto besser die Struktur
