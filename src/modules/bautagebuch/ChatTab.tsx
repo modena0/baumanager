@@ -191,14 +191,22 @@ Reagiere natürlich. Bestätige kurz was du verstanden hast. Stelle maximal EINE
     if (!zuVerarbeiten.length) { alert("Keine neuen Nachrichten zum Verarbeiten."); return; }
     setKiLaeuft(true);
 
-    const prompt = `Analysiere diese Nachrichten von Baustelle "${bsName}" (${datum}) und antworte NUR mit validem JSON:
-{"notizen":"Zusammenfassung","besonderheiten":null,"arbeitsbeginn":null,"arbeitsende":null,"materialien":[{"materialart":"Name","menge":0,"einheit":"m³","einbauort":"Ort","status":"verbaut"}]}
+    const prompt = `Du bist ein Bautagebuch-Assistent. Extrahiere ALLE relevanten Informationen aus diesen Baunachrichten und schreibe sie als strukturiertes Tagesprotokoll.
 
+Baustelle: ${bsName} | Datum: ${datum}
+
+NACHRICHTEN:
+${zuVerarbeiten.map(n => `${n.absender}: ${n.text || "[Foto]"}`).join("\n")}
+
+Antworte NUR mit diesem JSON (alle Felder ausfüllen wenn möglich, notizen IMMER befüllen):
+{"notizen":"Vollständige Zusammenfassung aller ausgeführten Arbeiten, Materialien, Mengen, Orte und Mitarbeiter","besonderheiten":"Besonderheiten oder null","arbeitsbeginn":"HH:MM oder null","arbeitsende":"HH:MM oder null","materialien":[{"materialart":"Materialname","menge":1.0,"einheit":"m³","einbauort":"Ort","status":"verbaut"}]}
+
+WICHTIG: notizen muss IMMER eine detaillierte Zusammenfassung enthalten!`;
 NACHRICHTEN:
 ${zuVerarbeiten.map(n => `${n.absender}: ${n.text || "[Foto]"}`).join("\n")}`;
 
     try {
-      const kiTxt = await kiAPI(prompt, "Extrahiere Baudaten als JSON. Antworte NUR mit validem JSON.");
+      const kiTxt = await kiAPI(prompt, "Du bist ein präziser Bautagebuch-Assistent. Extrahiere ALLE Informationen vollständig. Das Feld 'notizen' muss immer eine detaillierte deutsche Zusammenfassung der Arbeiten enthalten. Antworte NUR mit validem JSON, kein Markdown.");
       const match = kiTxt.match(/\{[\s\S]*\}/);
       if (!match) throw new Error("Kein JSON: " + kiTxt.slice(0, 100));
       const ki = JSON.parse(match[0]);
