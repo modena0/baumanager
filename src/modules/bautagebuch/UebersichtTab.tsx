@@ -11,6 +11,7 @@ export function UebersichtTab({ bsId, bsName, datum }: any) {
   const [editId,      setEditId]      = useState<number | null>(null);
   const [editData,    setEditData]    = useState<any>({});
   const [saving,      setSaving]      = useState(false);
+  const [deleteId,    setDeleteId]    = useState<number | null>(null);
 
   useEffect(() => {
     laden();
@@ -38,14 +39,14 @@ export function UebersichtTab({ bsId, bsName, datum }: any) {
     if (!editId) return;
     setSaving(true);
     await supabase.from("bautagebuch_eintraege").update({
-      notizen:       editData.notizen,
+      notizen:        editData.notizen,
       besonderheiten: editData.besonderheiten,
-      arbeitsbeginn: editData.arbeitsbeginn,
-      arbeitsende:   editData.arbeitsende,
-      wetter:        editData.wetter,
-      temperatur:    editData.temperatur,
-      wind:          editData.wind,
-      niederschlag:  editData.niederschlag,
+      arbeitsbeginn:  editData.arbeitsbeginn,
+      arbeitsende:    editData.arbeitsende,
+      wetter:         editData.wetter,
+      temperatur:     editData.temperatur,
+      wind:           editData.wind,
+      niederschlag:   editData.niederschlag,
     }).eq("id", editId);
     setEintraege(prev => prev.map(e => e.id === editId ? { ...e, ...editData } : e));
     setEditId(null);
@@ -53,15 +54,22 @@ export function UebersichtTab({ bsId, bsName, datum }: any) {
     setSaving(false);
   }
 
+  async function deleteEintrag() {
+    if (!deleteId) return;
+    await supabase.from("bautagebuch_eintraege").delete().eq("id", deleteId);
+    setEintraege(prev => prev.filter(e => e.id !== deleteId));
+    setDeleteId(null);
+  }
+
   const gefiltertE = eintraege.filter(e => (!filterVon || e.datum >= filterVon) && (!filterBis || e.datum <= filterBis));
   const gefiltertM = materialien.filter(m => (!filterVon || m.datum >= filterVon) && (!filterBis || m.datum <= filterBis));
 
-  // Nur ein Eintrag pro Tag (neuester gewinnt)
-  const eintraegePróTag: Record<string, any> = {};
+  // Nur ein Eintrag pro Tag
+  const eintraegeProTag: Record<string, any> = {};
   for (const e of gefiltertE) {
-    if (!eintraegePróTag[e.datum]) eintraegePróTag[e.datum] = e;
+    if (!eintraegeProTag[e.datum]) eintraegeProTag[e.datum] = e;
   }
-  const eintraegeUniq = Object.values(eintraegePróTag).sort((a, b) => b.datum.localeCompare(a.datum));
+  const eintraegeUniq = Object.values(eintraegeProTag).sort((a, b) => b.datum.localeCompare(a.datum));
 
   async function exportCSV() {
     const { data: alleN } = await supabase.from("chat_nachrichten").select("*").eq("baustelle_id", bsId).order("created_at");
@@ -93,6 +101,26 @@ export function UebersichtTab({ bsId, bsName, datum }: any) {
 
   return (
     <div>
+
+      {/* Löschen-Popup */}
+      {deleteId && (
+        <div onClick={() => setDeleteId(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 18, padding: "24px 28px", display: "flex", flexDirection: "column", gap: 12, minWidth: 220, boxShadow: "0 8px 32px rgba(0,0,0,0.18)" }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#222", textAlign: "center" }}>Tageslog löschen?</div>
+            <div style={{ fontSize: 12, color: "#aaa", textAlign: "center" }}>
+              {fmtDatum(eintraege.find(e => e.id === deleteId)?.datum || "")}
+            </div>
+            <div style={{ fontSize: 11, color: "#aaa", textAlign: "center" }}>Diese Aktion kann nicht rückgängig gemacht werden.</div>
+            <button onClick={deleteEintrag} style={{ padding: "11px", borderRadius: 10, border: "none", background: "#ff5252", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 14 }}>
+              🗑 Löschen
+            </button>
+            <button onClick={() => setDeleteId(null)} style={{ padding: "11px", borderRadius: 10, border: "1.5px solid #eee", background: "#fff", cursor: "pointer", fontSize: 14, color: "#555" }}>
+              Abbrechen
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Filter + Export */}
       <div style={{ ...C.card, padding: "12px 14px", marginBottom: 14 }}>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
@@ -125,9 +153,9 @@ export function UebersichtTab({ bsId, bsName, datum }: any) {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0" }}>
               <span style={{ fontSize: 13, fontWeight: 700, color: "#222" }}>
                 {fmtDatum(e.datum)}
+                {e.besonderheiten && <span style={{ fontSize: 10, color: "#BA7517", marginLeft: 8 }}>⚠</span>}
               </span>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                {e.besonderheiten && <span style={{ fontSize: 10, color: "#BA7517" }}>⚠</span>}
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                 {editId === e.id ? (
                   <>
                     <button onClick={saveEdit} disabled={saving}
@@ -140,10 +168,16 @@ export function UebersichtTab({ bsId, bsName, datum }: any) {
                     </button>
                   </>
                 ) : (
-                  <button onClick={() => startEdit(e)}
-                    style={{ fontSize: 11, padding: "4px 10px", borderRadius: 6, border: "1.5px solid #eee", background: "#fff", cursor: "pointer", color: "#555" }}>
-                    ✏ Bearbeiten
-                  </button>
+                  <>
+                    <button onClick={() => startEdit(e)}
+                      style={{ fontSize: 11, padding: "4px 10px", borderRadius: 6, border: "1.5px solid #eee", background: "#fff", cursor: "pointer", color: "#555" }}>
+                      ✏ Bearbeiten
+                    </button>
+                    <button onClick={() => setDeleteId(e.id)}
+                      style={{ fontSize: 11, padding: "4px 10px", borderRadius: 6, border: "1.5px solid #ffcdd2", background: "#fff", cursor: "pointer", color: "#ff5252" }}>
+                      🗑
+                    </button>
+                  </>
                 )}
               </div>
             </div>
