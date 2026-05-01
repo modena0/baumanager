@@ -5,6 +5,18 @@ const cors = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type"
 }
 
+// Korrekte base64 Konvertierung für große Dateien in Deno
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer)
+  const chunkSize = 8192
+  let binary = ""
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize)
+    binary += String.fromCharCode(...chunk)
+  }
+  return btoa(binary)
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors })
 
@@ -13,59 +25,35 @@ serve(async (req) => {
 
     const content: any[] = []
 
-    // PDFs von Supabase Storage laden mit Service Key
+    // PDFs von öffentlicher URL laden
     if (pdf_urls && pdf_urls.length > 0) {
-      const serviceKey = Deno.env.get("SERVICE_KEY") ?? ""
-      const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? ""
-
       for (const url of pdf_urls) {
         try {
-          // Storage-Pfad aus URL extrahieren
-          // URL Format: https://xxx.supabase.co/storage/v1/object/public/dokumente/analyse/...
-          const pathMatch = url.match(/\/storage\/v1\/object\/(?:public\/)?(.+)/)
-          let pdfData: ArrayBuffer | null = null
-
-          if (pathMatch && serviceKey && supabaseUrl) {
-            // Mit Service Key auf privaten Storage zugreifen
-            const storagePath = pathMatch[1]
-            const storageRes = await fetch(
-              `${supabaseUrl}/storage/v1/object/${storagePath}`,
-              { headers: { "Authorization": `Bearer ${serviceKey}` } }
-            )
-            if (storageRes.ok) {
-              pdfData = await storageRes.arrayBuffer()
-            }
+          console.log("Lade PDF von:", url)
+          const pdfRes = await fetch(url)
+          if (!pdfRes.ok) {
+            console.error("PDF laden fehlgeschlagen:", pdfRes.status, url)
+            continue
           }
-
-          // Fallback: direkt von URL laden (wenn öffentlich)
-          if (!pdfData) {
-            const pdfRes = await fetch(url)
-            if (pdfRes.ok) pdfData = await pdfRes.arrayBuffer()
-          }
-
-          if (pdfData) {
-            const bytes = new Uint8Array(pdfData)
-            let binary = ""
-            for (let i = 0; i < bytes.length; i++) {
-              binary += String.fromCharCode(bytes[i])
-            }
-            const pdfBase64 = btoa(binary)
-            content.push({
-              type: "document",
-              source: {
-                type: "base64",
-                media_type: "application/pdf",
-                data: pdfBase64,
-              },
-            })
-          }
+          const pdfBuffer = await pdfRes.arrayBuffer()
+          console.log("PDF geladen, Größe:", pdfBuffer.byteLength, "bytes")
+          const pdfBase64 = arrayBufferToBase64(pdfBuffer)
+          console.log("Base64 Länge:", pdfBase64.length)
+          content.push({
+            type: "document",
+            source: {
+              type: "base64",
+              media_type: "application/pdf",
+              data: pdfBase64,
+            },
+          })
         } catch (e: any) {
-          console.error("PDF Ladefehler:", e.message)
+          console.error("PDF Fehler:", e.message)
         }
       }
     }
 
-    // Direkte Dokumente (Bilder, Texte)
+    // Bilder und Texte
     if (dokumente && dokumente.length > 0) {
       for (const dok of dokumente) {
         if (dok.type === "image") {
@@ -79,8 +67,9 @@ serve(async (req) => {
       }
     }
 
-    // Text-Prompt
     content.push({ type: "text", text: prompt })
+
+    console.log("Content blocks:", content.length, "- davon PDFs:", content.filter(c => c.type === "document").length)
 
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -99,6 +88,8 @@ serve(async (req) => {
     })
 
     const d = await res.json()
+    console.log("Anthropic response type:", d.type, "- error:", d.error?.message)
+
     if (d.error) {
       return new Response(JSON.stringify({ error: d.error.message }), {
         status: 500, headers: { ...cors, "Content-Type": "application/json" }
@@ -110,6 +101,7 @@ serve(async (req) => {
       { headers: { ...cors, "Content-Type": "application/json" } }
     )
   } catch (e: any) {
+    console.error("Fehler:", e.message)
     return new Response(
       JSON.stringify({ error: e.message }),
       { status: 500, headers: { ...cors, "Content-Type": "application/json" } }
