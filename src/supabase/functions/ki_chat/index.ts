@@ -13,50 +13,73 @@ serve(async (req) => {
 
     const content: any[] = []
 
-    // PDFs von URLs laden und als Dokumente hinzufügen
+    // PDFs von Supabase Storage laden mit Service Key
     if (pdf_urls && pdf_urls.length > 0) {
+      const serviceKey = Deno.env.get("SERVICE_KEY") ?? ""
+      const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? ""
+
       for (const url of pdf_urls) {
         try {
-          const pdfRes = await fetch(url)
-          if (!pdfRes.ok) throw new Error(`PDF laden fehlgeschlagen: ${url}`)
-          const pdfBuffer = await pdfRes.arrayBuffer()
-          const pdfBase64 = btoa(String.fromCharCode(...new Uint8Array(pdfBuffer)))
-          content.push({
-            type: "document",
-            source: {
-              type: "base64",
-              media_type: "application/pdf",
-              data: pdfBase64,
-            },
-          })
+          // Storage-Pfad aus URL extrahieren
+          // URL Format: https://xxx.supabase.co/storage/v1/object/public/dokumente/analyse/...
+          const pathMatch = url.match(/\/storage\/v1\/object\/(?:public\/)?(.+)/)
+          let pdfData: ArrayBuffer | null = null
+
+          if (pathMatch && serviceKey && supabaseUrl) {
+            // Mit Service Key auf privaten Storage zugreifen
+            const storagePath = pathMatch[1]
+            const storageRes = await fetch(
+              `${supabaseUrl}/storage/v1/object/${storagePath}`,
+              { headers: { "Authorization": `Bearer ${serviceKey}` } }
+            )
+            if (storageRes.ok) {
+              pdfData = await storageRes.arrayBuffer()
+            }
+          }
+
+          // Fallback: direkt von URL laden (wenn öffentlich)
+          if (!pdfData) {
+            const pdfRes = await fetch(url)
+            if (pdfRes.ok) pdfData = await pdfRes.arrayBuffer()
+          }
+
+          if (pdfData) {
+            const bytes = new Uint8Array(pdfData)
+            let binary = ""
+            for (let i = 0; i < bytes.length; i++) {
+              binary += String.fromCharCode(bytes[i])
+            }
+            const pdfBase64 = btoa(binary)
+            content.push({
+              type: "document",
+              source: {
+                type: "base64",
+                media_type: "application/pdf",
+                data: pdfBase64,
+              },
+            })
+          }
         } catch (e: any) {
           console.error("PDF Ladefehler:", e.message)
         }
       }
     }
 
-    // Direkte base64 Dokumente (kleine Dateien/Bilder)
+    // Direkte Dokumente (Bilder, Texte)
     if (dokumente && dokumente.length > 0) {
       for (const dok of dokumente) {
         if (dok.type === "image") {
           content.push({
             type: "image",
-            source: {
-              type: "base64",
-              media_type: dok.media_type || "image/jpeg",
-              data: dok.data,
-            },
+            source: { type: "base64", media_type: dok.media_type || "image/jpeg", data: dok.data },
           })
         } else if (dok.type === "text") {
-          content.push({
-            type: "text",
-            text: `=== ${dok.name} ===\n${dok.data}`,
-          })
+          content.push({ type: "text", text: `=== ${dok.name} ===\n${dok.data}` })
         }
       }
     }
 
-    // Text-Prompt hinzufügen
+    // Text-Prompt
     content.push({ type: "text", text: prompt })
 
     const res = await fetch("https://api.anthropic.com/v1/messages", {
