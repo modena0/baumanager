@@ -32,7 +32,7 @@ async function kiAPI(prompt: string, system?: string): Promise<string> {
   return d.text || "Keine Antwort";
 }
 
-export function ChatTab({ bsId, bsName, datum, currentUser, rolle }: any) {
+export function ChatTab({ bsId, bsName, datum, currentUser, rolle, onVerarbeitet }: any) {
   const [nachrichten, setNachrichten] = useState<Nachricht[]>([]);
   const [text,         setText]         = useState("");
   const [sending,      setSending]      = useState(false);
@@ -225,6 +225,7 @@ ${zuVerarbeiten.map(n => `${n.absender}: ${n.text || "[Foto]"}`).join("\n")}`;
         zuVerarbeiten.find(u => u.id === n.id) ? { ...n, ki_verarbeitet: true } : n
       ));
       alert(`✓ ${zuVerarbeiten.length} Nachrichten verarbeitet!`);
+      if (onVerarbeitet) await onVerarbeitet();
 
     } catch (e: any) {
       alert("Fehler: " + e.message);
