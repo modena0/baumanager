@@ -18,6 +18,7 @@ interface Nachricht {
 // API-Call über Supabase Edge Function (kein CORS Problem)
 const SUPABASE_URL = "https://npcygxhgwqodmnqjwjnp.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wY3lneGhnd3FvZG1ucWp3am5wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY0MzA5MDksImV4cCI6MjA5MjAwNjkwOX0.VCW_I_W9SVGA5DPi5R_q7leiy5t335sVucM75eYiWWY";
+
 async function kiAPI(prompt: string, system?: string): Promise<string> {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/ki_chat`, {
     method: "POST",
@@ -39,7 +40,9 @@ export function ChatTab({ bsId, bsName, datum, currentUser, rolle, onVerarbeitet
   const [saschaTyping, setSaschaTyping] = useState(false);
   const [kiLaeuft,     setKiLaeuft]    = useState(false);
   const [fotoSending,  setFotoSending]  = useState(false);
+  const [selectedMsg,  setSelectedMsg]  = useState<number | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMobile = window.innerWidth < 768;
   const ichBin = currentUser?.name || "";
 
@@ -61,6 +64,22 @@ export function ChatTab({ bsId, bsName, datum, currentUser, rolle, onVerarbeitet
       .eq("datum", datum)
       .order("created_at");
     if (data) setNachrichten(data);
+  }
+
+  function startLongPress(id?: number) {
+    if (!id) return;
+    longPressTimer.current = setTimeout(() => setSelectedMsg(id), 500);
+  }
+
+  function cancelLongPress() {
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+  }
+
+  async function loescheNachricht() {
+    if (!selectedMsg) return;
+    await supabase.from("chat_nachrichten").delete().eq("id", selectedMsg);
+    setNachrichten(prev => prev.filter(n => n.id !== selectedMsg));
+    setSelectedMsg(null);
   }
 
   async function sendText() {
@@ -184,7 +203,6 @@ ${zuVerarbeiten.map(n => `${n.absender}: ${n.text || "[Foto]"}`).join("\n")}`;
       if (!match) throw new Error("Kein JSON: " + kiTxt.slice(0, 100));
       const ki = JSON.parse(match[0]);
 
-      // Eintrag laden oder anlegen
       let { data: eintr } = await supabase.from("bautagebuch_eintraege")
         .select("*").eq("baustelle_id", bsId).eq("datum", datum).maybeSingle();
       if (!eintr) {
@@ -240,6 +258,22 @@ ${zuVerarbeiten.map(n => `${n.absender}: ${n.text || "[Foto]"}`).join("\n")}`;
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
 
+      {/* Löschen-Popup */}
+      {selectedMsg && (
+        <div onClick={() => setSelectedMsg(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 18, padding: "24px 28px", display: "flex", flexDirection: "column", gap: 12, minWidth: 220, boxShadow: "0 8px 32px rgba(0,0,0,0.18)" }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#222", textAlign: "center" }}>Nachricht löschen?</div>
+            <div style={{ fontSize: 12, color: "#aaa", textAlign: "center" }}>Diese Aktion kann nicht rückgängig gemacht werden.</div>
+            <button onClick={loescheNachricht} style={{ padding: "11px", borderRadius: 10, border: "none", background: "#ff5252", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 14 }}>
+              🗑 Löschen
+            </button>
+            <button onClick={() => setSelectedMsg(null)} style={{ padding: "11px", borderRadius: 10, border: "1.5px solid #eee", background: "#fff", cursor: "pointer", fontSize: 14, color: "#555" }}>
+              Abbrechen
+            </button>
+          </div>
+        </div>
+      )}
+
       {unverarbeitet > 0 && (
         <div style={{ flexShrink: 0, padding: "6px 12px", background: "#f3e5f5", borderRadius: 8, marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={{ fontSize: 11, color: "#9C27B0" }}>✦ {unverarbeitet} Nachricht{unverarbeitet > 1 ? "en" : ""} noch nicht in Tageslog übertragen</span>
@@ -263,8 +297,14 @@ ${zuVerarbeiten.map(n => `${n.absender}: ${n.text || "[Foto]"}`).join("\n")}`;
           const ichBinSender = n.absender === ichBin;
           const isSascha = n.absender === "Sascha";
           const vorherigerGleicher = idx > 0 && nachrichten[idx - 1].absender === n.absender;
+          const isSelected = n.id === selectedMsg;
           return (
-            <div key={n.id || idx} style={{ display: "flex", flexDirection: ichBinSender ? "row-reverse" : "row", alignItems: "flex-end", gap: 6, padding: "1px 12px" }}>
+            <div key={n.id || idx}
+              onContextMenu={e => { e.preventDefault(); if (n.id) setSelectedMsg(n.id); }}
+              onTouchStart={() => startLongPress(n.id)}
+              onTouchEnd={cancelLongPress}
+              onTouchMove={cancelLongPress}
+              style={{ display: "flex", flexDirection: ichBinSender ? "row-reverse" : "row", alignItems: "flex-end", gap: 6, padding: "1px 12px", opacity: isSelected ? 0.6 : 1, transition: "opacity 0.15s" }}>
               {!ichBinSender && (
                 <div style={{ width: 30, height: 30, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: isSascha ? 15 : 11, fontWeight: 700, color: "#fff", background: vorherigerGleicher ? "transparent" : isSascha ? ACCENT : getRolleColor(n.absender_rolle || "") }}>
                   {!vorherigerGleicher && (isSascha ? "🤖" : n.absender.split(" ").map((x: string) => x[0]).join("").slice(0, 2))}
