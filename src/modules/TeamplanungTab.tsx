@@ -2,6 +2,23 @@ import { useState, useEffect } from "react";
 import { C, ACCENT } from "../lib/constants";
 import { supabase } from "../lib/supabase";
 
+const SUPABASE_URL = "https://npcygxhgwqodmnqjwjnp.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wY3lneGhnd3FvZG1ucWp3am5wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY0MzA5MDksImV4cCI6MjA5MjAwNjkwOX0.VCW_I_W9SVGA5DPi5R_q7leiy5t335sVucM75eYiWWY";
+
+async function kiAPI(prompt: string, system?: string): Promise<string> {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/ki_chat`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+    },
+    body: JSON.stringify({ prompt, system }),
+  });
+  if (!res.ok) throw new Error(`Edge Function Fehler ${res.status}`);
+  const d = await res.json();
+  return d.text || "Keine Antwort";
+}
+
 const TEAM_FARBEN = ["#4DB6AC", "#378ADD", "#BA7517", "#E24B4A", "#9C27B0", "#1D9E75", "#607D8B"];
 const SPEZIALISIERUNGEN = ["FGU-Bau", "Tiefbau", "Asphalt", "Straßenbau", "LSA", "Pflaster", "Brücke", "Kanal", "Sonstiges"];
 
@@ -113,7 +130,7 @@ export function TeamplanungTab({ data, currentUser, rolle }: any) {
     setChemie(cs => cs.map(x => x.id === c.id ? { ...x, priorisiert: !x.priorisiert } : x));
   }
 
-  // ── KI Auto-Zuweisung ────────────────────────────────────────────────────────
+  // ── KI Auto-Zuweisung via Supabase Edge Function ──────────────────────────
   async function kiAutoZuweisung() {
     setKiLoading(true);
 
@@ -128,7 +145,7 @@ export function TeamplanungTab({ data, currentUser, rolle }: any) {
       return a && b ? { a: c.mitarbeiter_a, b: c.mitarbeiter_b, nameA: a.name, nameB: b.name } : null;
     }).filter(Boolean);
 
-    const prompt = `Du bist ein Bau-Logistik-Experte. Erstelle einen optimalen Teamplan für den ${datum}.
+    const prompt = `Erstelle einen optimalen Teamplan für den ${datum}.
 Antworte NUR mit einem validen JSON Array. Kein Text davor oder danach.
 
 MITARBEITER (verfügbar):
@@ -147,39 +164,16 @@ REGELN:
 - Qualifikationen mit Baustellen-Anforderungen abgleichen
 - LKW-Fahrer können rotierend sein (rotierende array)
 
-Antworte mit JSON Array in diesem Format (KEIN anderer Text!):
-[
-  {
-    "team_name": "Team A",
-    "farbe": "#4DB6AC",
-    "spezialisierung": "Tiefbau",
-    "mitarbeiter": [1, 3],
-    "rotierende": [3],
-    "baustellen": [1],
-    "notizen": "LKW Fahrer rotiert"
-  }
-]`;
+Antworte NUR mit diesem JSON Array (kein anderer Text!):
+[{"team_name":"Team A","farbe":"#4DB6AC","spezialisierung":"Tiefbau","mitarbeiter":[1,3],"rotierende":[3],"baustellen":[1],"notizen":"LKW Fahrer rotiert"}]`;
 
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1500,
-          messages: [{ role: "user", content: prompt }]
-        })
-      });
-      const d = await res.json();
-      const text = d.content && d.content[0] && d.content[0].text;
-      if (!text) throw new Error("Keine Antwort");
+      const text = await kiAPI(prompt, "Du bist ein Bau-Logistik-Experte. Erstelle optimale Teams. Antworte NUR mit validem JSON Array, kein Markdown, kein Text davor oder danach.");
 
-      // JSON aus Antwort extrahieren
       const jsonMatch = text.match(/\[[\s\S]*\]/);
-      if (!jsonMatch) throw new Error("Kein JSON gefunden");
+      if (!jsonMatch) throw new Error("Kein JSON gefunden: " + text.slice(0, 100));
       const kiTeams = JSON.parse(jsonMatch[0]);
 
-      // Teams in Supabase speichern
       for (const t of kiTeams) {
         const team: Team = {
           datum,
@@ -226,11 +220,7 @@ Antworte mit JSON Array in diesem Format (KEIN anderer Text!):
         {kannPlanen && (
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button style={{ ...C.btnS }} onClick={() => setShowChemie(true)}>⚗ Chemie</button>
-            <button
-              style={{ ...C.btnS, opacity: kiLoading ? 0.7 : 1 }}
-              onClick={kiAutoZuweisung}
-              disabled={kiLoading}
-            >
+            <button style={{ ...C.btnS, opacity: kiLoading ? 0.7 : 1 }} onClick={kiAutoZuweisung} disabled={kiLoading}>
               {kiLoading ? "⏳ KI plant..." : "✦ KI-Zuweisung"}
             </button>
             <button style={{ ...C.btnP }} onClick={() => {
@@ -261,14 +251,9 @@ Antworte mit JSON Array in diesem Format (KEIN anderer Text!):
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>
           {teams.map(team => (
-            <TeamKarte
-              key={team.id}
-              team={team}
-              data={data}
-              kannPlanen={kannPlanen}
+            <TeamKarte key={team.id} team={team} data={data} kannPlanen={kannPlanen}
               onEdit={() => { setEditTeam(team); setShowForm(true); }}
-              onDelete={() => deleteTeam(team.id!)}
-            />
+              onDelete={() => deleteTeam(team.id!)} />
           ))}
           {teams.length === 0 && (
             <div style={{ ...C.card, textAlign: "center", padding: 40, color: "#bbb", gridColumn: "1/-1" }}>
@@ -304,11 +289,9 @@ Antworte mit JSON Array in diesem Format (KEIN anderer Text!):
   );
 }
 
-// ── Team Karte ─────────────────────────────────────────────────────────────────
 function TeamKarte({ team, data, kannPlanen, onEdit, onDelete }: any) {
   const getMa = (id: number) => data.mitarbeiter.find((m: any) => m.id === id);
   const getBS = (id: number) => data.baustellen.find((b: any) => b.id === id);
-
   return (
     <div style={{ ...C.card, borderTop: "4px solid " + team.farbe, padding: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
@@ -328,7 +311,6 @@ function TeamKarte({ team, data, kannPlanen, onEdit, onDelete }: any) {
           </div>
         )}
       </div>
-
       <div style={{ marginBottom: 10 }}>
         <div style={{ fontSize: 10, fontWeight: 600, color: "#aaa", marginBottom: 5, textTransform: "uppercase" as any }}>Mitarbeiter</div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
@@ -346,7 +328,6 @@ function TeamKarte({ team, data, kannPlanen, onEdit, onDelete }: any) {
           {team.mitarbeiter.length === 0 && <span style={{ fontSize: 12, color: "#bbb" }}>Keine</span>}
         </div>
       </div>
-
       <div style={{ marginBottom: team.notizen ? 10 : 0 }}>
         <div style={{ fontSize: 10, fontWeight: 600, color: "#aaa", marginBottom: 5, textTransform: "uppercase" as any }}>Baustellen</div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
@@ -358,17 +339,14 @@ function TeamKarte({ team, data, kannPlanen, onEdit, onDelete }: any) {
           {team.baustellen.length === 0 && <span style={{ fontSize: 12, color: "#bbb" }}>Keine</span>}
         </div>
       </div>
-
       {team.notizen && <div style={{ marginTop: 8, padding: "7px 10px", background: "#f8f8f8", borderRadius: 8, fontSize: 11, color: "#666", fontStyle: "italic" }}>{team.notizen}</div>}
     </div>
   );
 }
 
-// ── Team Formular ──────────────────────────────────────────────────────────────
 function TeamFormular({ team, data, chemie, onSave, onClose }: any) {
   const [f, setF] = useState<Team>({ ...team });
   const isMobile = window.innerWidth < 768;
-
   const toggleMA = (id: number) => setF(t => ({
     ...t,
     mitarbeiter: t.mitarbeiter.includes(id) ? t.mitarbeiter.filter(i => i !== id) : [...t.mitarbeiter, id],
@@ -382,28 +360,21 @@ function TeamFormular({ team, data, chemie, onSave, onClose }: any) {
     ...t,
     baustellen: t.baustellen.includes(id) ? t.baustellen.filter(i => i !== id) : [...t.baustellen, id],
   }));
-
   const aktiveMa = data.mitarbeiter.filter((m: any) => m.status !== "krank" && m.status !== "Urlaub" && m.status !== "gekuendigt");
   const aktiveBS = data.baustellen.filter((b: any) => b.status !== "abgeschlossen");
   const getMaName = (id: number) => data.mitarbeiter.find((m: any) => m.id === id)?.name || "";
-
   const chemieHinweise = chemie.filter((c: any) =>
     (f.mitarbeiter.includes(c.mitarbeiter_a) || f.mitarbeiter.includes(c.mitarbeiter_b)) &&
     (c.priorisiert || c.zusammen_count >= 3)
   );
-
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 9999 }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div style={{ ...C.card, width: isMobile ? "100%" : "min(620px,95vw)", maxHeight: isMobile ? "92vh" : "90vh", overflowY: "auto", borderRadius: isMobile ? "20px 20px 0 0" : 16, padding: isMobile ? "20px 16px 32px" : 24, margin: 0 }}>
-
         {isMobile && <div style={{ width: 40, height: 4, background: "#ddd", borderRadius: 2, margin: "0 auto 16px" }} />}
-
         <div style={{ fontSize: 17, fontWeight: 700, color: "#222", marginBottom: 20, paddingBottom: 12, borderBottom: "1px solid #f5f5f5" }}>
           {team.id ? "Team bearbeiten" : "Neues Team"}
         </div>
-
-        {/* Name + Farbe */}
         <div style={{ display: "flex", gap: 10, marginBottom: 14, alignItems: "flex-end", flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: 160 }}>
             <label style={C.lbl}>Team Name</label>
@@ -419,8 +390,6 @@ function TeamFormular({ team, data, chemie, onSave, onClose }: any) {
             </div>
           </div>
         </div>
-
-        {/* Spezialisierung */}
         <div style={{ marginBottom: 14 }}>
           <label style={C.lbl}>Spezialisierung</label>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -432,8 +401,6 @@ function TeamFormular({ team, data, chemie, onSave, onClose }: any) {
             ))}
           </div>
         </div>
-
-        {/* Dauerhaft */}
         <div style={{ marginBottom: 14, padding: "12px 14px", background: "#f8f8ff", borderRadius: 10, border: "1px solid #e8eaed" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: f.ist_dauerhaft ? 10 : 0 }}>
             <input type="checkbox" id="dauerhaft" checked={f.ist_dauerhaft} onChange={e => setF(t => ({ ...t, ist_dauerhaft: e.target.checked }))}
@@ -453,8 +420,6 @@ function TeamFormular({ team, data, chemie, onSave, onClose }: any) {
             </div>
           )}
         </div>
-
-        {/* Chemie Hinweise */}
         {chemieHinweise.length > 0 && (
           <div style={{ marginBottom: 14, padding: "10px 12px", background: "#fff8e1", borderRadius: 10, border: "1px solid #BA751733" }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: "#BA7517", marginBottom: 6 }}>⚗ Team-Chemie</div>
@@ -465,8 +430,6 @@ function TeamFormular({ team, data, chemie, onSave, onClose }: any) {
             ))}
           </div>
         )}
-
-        {/* Mitarbeiter */}
         <div style={{ marginBottom: 14 }}>
           <label style={C.lbl}>Mitarbeiter ({f.mitarbeiter.length} ausgewählt)</label>
           <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 220, overflowY: "auto", border: "1px solid #e8eaed", borderRadius: 10, padding: 8 }}>
@@ -495,8 +458,6 @@ function TeamFormular({ team, data, chemie, onSave, onClose }: any) {
             })}
           </div>
         </div>
-
-        {/* Baustellen */}
         <div style={{ marginBottom: 14 }}>
           <label style={C.lbl}>Baustellen ({f.baustellen.length} ausgewählt)</label>
           <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 160, overflowY: "auto", border: "1px solid #e8eaed", borderRadius: 10, padding: 8 }}>
@@ -512,13 +473,10 @@ function TeamFormular({ team, data, chemie, onSave, onClose }: any) {
             })}
           </div>
         </div>
-
-        {/* Notizen */}
         <div style={{ marginBottom: 20 }}>
           <label style={C.lbl}>Notizen</label>
           <input style={C.inp} value={f.notizen} onChange={e => setF(t => ({ ...t, notizen: e.target.value }))} placeholder="z.B. LKW-Fahrer rotiert zwischen Baustelle A und B" />
         </div>
-
         <div style={{ display: "flex", gap: 8 }}>
           <button style={{ ...C.btnS, flex: 1 }} onClick={onClose}>Abbrechen</button>
           <button style={{ ...C.btnP, flex: 1, opacity: !f.team_name ? 0.5 : 1 }} onClick={() => { if (f.team_name) onSave(f); }}>Speichern</button>
@@ -528,7 +486,6 @@ function TeamFormular({ team, data, chemie, onSave, onClose }: any) {
   );
 }
 
-// ── Chemie Modal ───────────────────────────────────────────────────────────────
 function ChemieModal({ chemie, data, onToggle, onClose }: any) {
   const isMobile = window.innerWidth < 768;
   const getMaName = (id: number) => data.mitarbeiter.find((m: any) => m.id === id)?.name || "?";
