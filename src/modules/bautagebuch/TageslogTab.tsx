@@ -59,7 +59,19 @@ export function TageslogTab({ eintrag, setEintrag, data, currentUser, isMobile }
       : [...e.mitarbeiter_anwesend, id],
   }));
 
+  const toggleFZ = (id: number) => setEintrag((e: any) => ({
+    ...e,
+    geraete: (e.geraete || []).includes(id)
+      ? e.geraete.filter((i: number) => i !== id)
+      : [...(e.geraete || []), id],
+  }));
+
   if (!eintrag) return <div style={{ textAlign: "center", color: "#bbb", padding: 32 }}>Lädt...</div>;
+
+  // Fahrzeuge die dieser Baustelle zugewiesen sind
+  const bs = data.baustellen.find((b: any) => b.id === eintrag.baustelle_id);
+  const bsFzIds = (bs?.fahrzeuge || []).map((id: any) => Number(id)).filter((id: number) => !isNaN(id));
+  const bsFahrzeuge = bsFzIds.map((id: number) => data.fahrzeuge.find((f: any) => f.id === id)).filter(Boolean);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -119,6 +131,30 @@ export function TageslogTab({ eintrag, setEintrag, data, currentUser, isMobile }
             })}
         </div>
       </div>
+
+      {/* Fahrzeuge */}
+      {bsFahrzeuge.length > 0 && (
+        <div style={{ ...C.card, padding: "14px 16px" }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "#222", marginBottom: 10 }}>
+            🚛 Fahrzeuge im Einsatz ({(eintrag.geraete || []).length})
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {bsFahrzeuge.map((f: any) => {
+              const sel = (eintrag.geraete || []).includes(f.id);
+              return (
+                <button key={f.id} onClick={() => toggleFZ(f.id)}
+                  style={{ padding: "7px 12px", borderRadius: 10, border: "1.5px solid " + (sel ? "#378ADD" : "#eee"), background: sel ? "#e8f0fb" : "#fff", cursor: "pointer", fontSize: 12, color: sel ? "#378ADD" : "#555", fontWeight: sel ? 600 : 400 }}>
+                  {f.name}
+                  {f.kennzeichen && <span style={{ fontSize: 10, color: sel ? "#378ADD99" : "#bbb", marginLeft: 5 }}>{f.kennzeichen}</span>}
+                </button>
+              );
+            })}
+          </div>
+          {bsFahrzeuge.length === 0 && (
+            <div style={{ fontSize: 11, color: "#bbb" }}>Keine Fahrzeuge dieser Baustelle zugewiesen</div>
+          )}
+        </div>
+      )}
 
       {/* Notizen */}
       <div style={{ ...C.card, padding: "14px 16px" }}>
