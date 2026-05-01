@@ -247,8 +247,8 @@ WICHTIG: notizen muss IMMER eine detaillierte Zusammenfassung enthalten!`;
               baustelle_id: bsId,
               datum,
               eintrag_id: eintr.id,
-              foto_url: n.foto_url,
-              beschreibung: "Aus Sascha-Chat übertragen",
+              url: n.foto_url,
+              typ: "allgemein",
               erstellt_von: n.absender,
             }]);
           }
