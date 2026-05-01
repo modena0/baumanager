@@ -5,7 +5,7 @@ import { supabase } from "../lib/supabase";
 const SUPABASE_URL = "https://npcygxhgwqodmnqjwjnp.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wY3lneGhnd3FvZG1ucWp3am5wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY0MzA5MDksImV4cCI6MjA5MjAwNjkwOX0.VCW_I_W9SVGA5DPi5R_q7leiy5t335sVucM75eYiWWY";
 
-const BS_KAT  = ["Tiefbau", "LSA", "Straße", "Sonstiges"];
+const BS_KAT = ["Tiefbau", "LSA", "Straße", "Sonstiges"];
 
 interface LVPosition {
   nr: string;
@@ -46,11 +46,40 @@ interface Vorschau {
   annahmen: string[];
 }
 
+async function dateiZuBase64(file: File): Promise<{ type: string; data: string; media_type?: string; name: string }> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const result = e.target?.result as string;
+      // base64 Teil extrahieren (nach "data:...;base64,")
+      const base64 = result.split(",")[1];
+      if (file.type === "application/pdf" || file.name.endsWith(".pdf")) {
+        resolve({ type: "pdf", data: base64, name: file.name });
+      } else if (file.type.startsWith("image/")) {
+        resolve({ type: "image", data: base64, media_type: file.type, name: file.name });
+      } else {
+        // Für GAEB/CSV als Text
+        resolve({ type: "text", data: atob(base64), name: file.name });
+      }
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function textDateiLesen(file: File): Promise<string> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => resolve((e.target?.result as string)?.slice(0, 8000) || "");
+    reader.onerror = () => resolve(`[Fehler beim Lesen: ${file.name}]`);
+    reader.readAsText(file, "utf-8");
+  });
+}
+
 export function DokumentAnalyseTab({ data, currentUser, rolle }: any) {
   const [dateien,     setDateien]     = useState<File[]>([]);
   const [analyzing,   setAnalyzing]   = useState(false);
   const [fortschritt, setFortschritt] = useState("");
-  const [vorschau,    setVorschau]    = useState<Vorschau|null>(null);
+  const [vorschau,    setVorschau]    = useState<Vorschau | null>(null);
   const [saving,      setSaving]      = useState(false);
   const [gespeichert, setGespeichert] = useState(false);
   const dropRef = useRef<HTMLDivElement>(null);
@@ -75,60 +104,62 @@ export function DokumentAnalyseTab({ data, currentUser, rolle }: any) {
     return "📁";
   }
 
-  async function dateiZuText(file: File): Promise<string> {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const result = e.target?.result;
-        if (typeof result === "string") {
-          resolve(result.slice(0, 8000));
-        } else {
-          resolve(`[Binärdatei: ${file.name} - ${Math.round(file.size / 1024)} KB]`);
-        }
-      };
-      reader.onerror = () => resolve(`[Fehler beim Lesen: ${file.name}]`);
-      if (file.name.endsWith(".x83") || file.name.endsWith(".x81") ||
-          file.name.endsWith(".gaeb") || file.name.endsWith(".csv") ||
-          file.name.endsWith(".txt")) {
-        reader.readAsText(file, "utf-8");
-      } else {
-        resolve(`[Dokument: ${file.name}, Größe: ${Math.round(file.size / 1024)} KB, Typ: ${file.type || "unbekannt"}]`);
-      }
-    });
+  function istTextDatei(file: File) {
+    return file.name.endsWith(".x83") || file.name.endsWith(".x81") ||
+      file.name.endsWith(".gaeb") || file.name.endsWith(".csv") || file.name.endsWith(".txt");
+  }
+
+  function istBinaerDatei(file: File) {
+    return file.name.endsWith(".xlsx") || file.name.endsWith(".xls") ||
+      file.name.endsWith(".docx") || file.name.endsWith(".doc");
   }
 
   async function analyseStarten() {
     if (dateien.length === 0) return;
     setAnalyzing(true);
     setVorschau(null);
+    setFortschritt("📂 Dateien werden eingelesen...");
 
     try {
-      setFortschritt("📂 Dateien werden eingelesen...");
-      const dateiTexte = await Promise.all(dateien.map(async (f) => {
-        const text = await dateiZuText(f);
-        return `=== ${f.name} ===\n${text}`;
-      }));
+      const dokumente: any[] = [];
+      const textTeile: string[] = [];
 
-      setFortschritt("🤖 KI analysiert Projektunterlagen...");
+      for (const file of dateien) {
+        if (file.type === "application/pdf" || file.name.endsWith(".pdf")) {
+          setFortschritt(`📄 PDF wird geladen: ${file.name}...`);
+          const dok = await dateiZuBase64(file);
+          dokumente.push(dok);
+        } else if (file.type.startsWith("image/")) {
+          setFortschritt(`🖼 Bild wird geladen: ${file.name}...`);
+          const dok = await dateiZuBase64(file);
+          dokumente.push(dok);
+        } else if (istTextDatei(file)) {
+          setFortschritt(`📋 GAEB/Text wird gelesen: ${file.name}...`);
+          const text = await textDateiLesen(file);
+          textTeile.push(`=== ${file.name} ===\n${text}`);
+        } else if (istBinaerDatei(file)) {
+          textTeile.push(`[Excel/Word-Datei: ${file.name}, ${Math.round(file.size / 1024)} KB – Inhalt bitte manuell prüfen]`);
+        }
+      }
 
-      const prompt = `Du bist ein erfahrener Bauleiter und analysierst Projektunterlagen für eine Baustelle.
-Analysiere die folgenden Dokumente und erstelle eine strukturierte digitale Baustellenplanung.
+      setFortschritt("🤖 KI analysiert alle Dokumente...");
 
-DOKUMENTE:
-${dateiTexte.join("\n\n")}
+      const prompt = `Du bist ein erfahrener Bauleiter und analysierst Projektunterlagen.
+Analysiere alle beigefügten Dokumente (PDFs, Bilder, Texte) vollständig und erstelle eine strukturierte digitale Baustellenplanung.
 
-WICHTIGE REGELN:
-1. Erkenne Bauabschnitte, Bereiche, FGUs, Schächte aus den Dokumenten
-2. Leite konkrete Aufgaben ab - verständlich für Vorarbeiter
-3. Weise LV-Positionen den passenden Aufgaben zu
-4. Erkenne Materialien mit Mengen und Einheiten
-5. Erkenne Termine wenn vorhanden
-6. Wenn Informationen fehlen, mache sinnvolle Annahmen und kennzeichne sie mit [ANNAHME]
-7. Denke wie ein erfahrener Bauleiter - erkenne Zusammenhänge
-8. Priorisiere praktische Nutzbarkeit
+${textTeile.length > 0 ? `ZUSÄTZLICHE TEXTDOKUMENTE:\n${textTeile.join("\n\n")}` : ""}
 
-Antworte NUR mit einem validen JSON Objekt. Kein Text davor oder danach:
+ANALYSE-ANWEISUNGEN:
+1. Lies alle PDFs und Bilder vollständig durch – auch Bauablaufpläne, Lagepläne, Leistungsverzeichnisse
+2. Erkenne Bauabschnitte, Bereiche, FGUs, Schächte, Straßenzüge aus den Dokumenten
+3. Leite konkrete Aufgaben ab – verständlich für Vorarbeiter auf der Baustelle
+4. Weise LV-Positionen den passenden Aufgaben zu wenn vorhanden
+5. Erkenne Materialien mit Mengen und Einheiten
+6. Erkenne Termine, Kalenderwochen, Fristen aus Bauablaufplänen
+7. Wenn Informationen fehlen, mache sinnvolle Annahmen und kennzeichne sie mit [ANNAHME]
+8. Priorisiere Aufgaben nach Bauablauf: was zuerst, was hängt voneinander ab
 
+Antworte NUR mit einem validen JSON Objekt, kein Text davor oder danach:
 {
   "baustelle_name": "Name der Baustelle",
   "ort": "Ort/Adresse",
@@ -138,7 +169,7 @@ Antworte NUR mit einem validen JSON Objekt. Kein Text davor oder danach:
   "ende": "YYYY-MM-DD oder null",
   "bereiche": [
     {
-      "name": "Bereichsname (z.B. Bauabschnitt 1, FGU Nord)",
+      "name": "Bereichsname z.B. Bauabschnitt 1 oder FGU Nord",
       "beschreibung": "Was wird hier gemacht",
       "aufgaben": [
         {
@@ -151,7 +182,7 @@ Antworte NUR mit einem validen JSON Objekt. Kein Text davor oder danach:
           "lv_positionen": [{"nr": "1.1.1","beschreibung": "LV-Positionsbeschreibung","menge": 100,"einheit": "m","einheitspreis": 0}],
           "materialien": [{"name": "Materialname","menge": 100,"einheit": "m"}],
           "termine": "z.B. KW 15-18 oder null",
-          "annahme": "Beschreibung der Annahme wenn nötig, sonst null"
+          "annahme": "Beschreibung der Annahme wenn nötig sonst null"
         }
       ]
     }
@@ -160,36 +191,29 @@ Antworte NUR mit einem validen JSON Objekt. Kein Text davor oder danach:
   "annahmen": ["Liste aller gemachten Annahmen"]
 }`;
 
+      const body: any = { prompt, system: "Du bist ein erfahrener Bauleiter. Lies alle Dokumente vollständig. Antworte NUR mit validem JSON, kein Markdown.", max_tokens: 4000 };
+      if (dokumente.length > 0) body.dokumente = dokumente;
+
       const res = await fetch(`${SUPABASE_URL}/functions/v1/ki_chat`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({
-          prompt,
-          system: "Du bist ein erfahrener Bauleiter. Antworte NUR mit validem JSON Objekt, kein Markdown, kein Text davor oder danach.",
-          max_tokens: 4000,
-        }),
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SUPABASE_ANON_KEY}` },
+        body: JSON.stringify(body),
       });
 
       if (!res.ok) throw new Error(`Edge Function Fehler ${res.status}`);
       const d = await res.json();
+      if (d.error) throw new Error(d.error);
       const text = d.text;
       if (!text) throw new Error("Keine Antwort von KI");
 
       setFortschritt("🔍 Struktur wird aufbereitet...");
-
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (!jsonMatch) throw new Error("KI hat kein gültiges JSON zurückgegeben");
 
       const result: Vorschau = JSON.parse(jsonMatch[0]);
       result.bereiche = result.bereiche.map((b, bi) => ({
         ...b,
-        aufgaben: b.aufgaben.map((a, ai) => ({
-          ...a,
-          id: a.id || `A${bi + 1}${ai + 1}`,
-        })),
+        aufgaben: b.aufgaben.map((a, ai) => ({ ...a, id: a.id || `A${bi + 1}${ai + 1}` })),
       }));
 
       setVorschau(result);
@@ -266,11 +290,12 @@ Antworte NUR mit einem validen JSON Objekt. Kein Text davor oder danach:
 
   const prioritaetFarbe = (p: string) => p === "hoch" ? "#E24B4A" : p === "mittel" ? "#BA7517" : "#888";
 
+  // ── UPLOAD BEREICH ────────────────────────────────────────────────────────────
   if (!vorschau) {
     return (
       <div>
         <div style={{ fontSize: 15, fontWeight: 700, color: "#222", marginBottom: 4 }}>🤖 Baustellenstruktur aus Dokumenten</div>
-        <div style={{ fontSize: 12, color: "#aaa", marginBottom: 20 }}>Lade Projektunterlagen hoch – KI erstellt automatisch eine strukturierte Baustellenplanung</div>
+        <div style={{ fontSize: 12, color: "#aaa", marginBottom: 20 }}>Lade Projektunterlagen hoch – KI liest PDFs vollständig und erstellt eine strukturierte Baustellenplanung</div>
 
         {!kannAnalysieren ? (
           <div style={{ ...C.card, textAlign: "center", color: "#bbb", padding: 32 }}>Kein Zugriff für diese Rolle</div>
@@ -284,8 +309,9 @@ Antworte NUR mit einem validen JSON Objekt. Kein Text davor oder danach:
               style={{ border: "2px dashed #e8eaed", borderRadius: 16, padding: 40, textAlign: "center", cursor: "pointer", marginBottom: 16, transition: "border-color 0.2s", background: "#fafafa" }}>
               <div style={{ fontSize: 40, marginBottom: 10 }}>📂</div>
               <div style={{ fontSize: 14, fontWeight: 600, color: "#333", marginBottom: 4 }}>Dokumente hier ablegen</div>
-              <div style={{ fontSize: 12, color: "#aaa" }}>PDF, Excel (.xlsx), GAEB (.x83, .x81), Word (.docx)</div>
-              <input ref={fileRef} type="file" multiple accept=".pdf,.xlsx,.xls,.x83,.x81,.gaeb,.docx,.doc,.csv,.txt"
+              <div style={{ fontSize: 12, color: "#aaa", marginBottom: 4 }}>PDF, Excel (.xlsx), GAEB (.x83, .x81), Bilder</div>
+              <div style={{ fontSize: 11, color: ACCENT }}>✦ PDFs werden vollständig gelesen – auch Bauablaufpläne und Zeichnungen</div>
+              <input ref={fileRef} type="file" multiple accept=".pdf,.xlsx,.xls,.x83,.x81,.gaeb,.docx,.doc,.csv,.txt,.jpg,.jpeg,.png"
                 style={{ display: "none" }} onChange={e => handleFiles(e.target.files)} />
             </div>
 
@@ -294,16 +320,24 @@ Antworte NUR mit einem validen JSON Objekt. Kein Text davor oder danach:
                 <div style={{ fontSize: 13, fontWeight: 600, color: "#222", marginBottom: 10 }}>
                   {dateien.length} Datei{dateien.length !== 1 ? "en" : ""} ausgewählt
                 </div>
-                {dateien.map((f, i) => (
-                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: "1px solid #f5f5f5" }}>
-                    <span style={{ fontSize: 18 }}>{getFileIcon(f.name)}</span>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 500, color: "#222" }}>{f.name}</div>
-                      <div style={{ fontSize: 11, color: "#aaa" }}>{Math.round(f.size / 1024)} KB</div>
+                {dateien.map((f, i) => {
+                  const isPDF = f.type === "application/pdf" || f.name.endsWith(".pdf");
+                  const isImg = f.type.startsWith("image/");
+                  return (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: "1px solid #f5f5f5" }}>
+                      <span style={{ fontSize: 18 }}>{getFileIcon(f.name)}</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 13, fontWeight: 500, color: "#222" }}>{f.name}</div>
+                        <div style={{ fontSize: 11, color: "#aaa" }}>
+                          {Math.round(f.size / 1024)} KB
+                          {isPDF && <span style={{ color: ACCENT, marginLeft: 6 }}>✦ wird vollständig gelesen</span>}
+                          {isImg && <span style={{ color: "#378ADD", marginLeft: 6 }}>🖼 Bild wird analysiert</span>}
+                        </div>
+                      </div>
+                      <button onClick={() => removeFile(i)} style={{ background: "none", border: "none", cursor: "pointer", color: "#E24B4A", fontSize: 16, padding: "0 4px" }}>✕</button>
                     </div>
-                    <button onClick={() => removeFile(i)} style={{ background: "none", border: "none", cursor: "pointer", color: "#E24B4A", fontSize: 16, padding: "0 4px" }}>✕</button>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
@@ -318,7 +352,7 @@ Antworte NUR mit einem validen JSON Objekt. Kein Text davor oder danach:
               <div style={{ ...C.card, marginTop: 16, textAlign: "center", padding: 24, background: "#f8fffe", border: "1px solid " + ACCENT + "44" }}>
                 <div style={{ fontSize: 28, marginBottom: 8 }}>🤖</div>
                 <div style={{ fontSize: 13, color: ACCENT, fontWeight: 500 }}>{fortschritt}</div>
-                <div style={{ fontSize: 11, color: "#aaa", marginTop: 6 }}>Das kann 20-40 Sekunden dauern...</div>
+                <div style={{ fontSize: 11, color: "#aaa", marginTop: 6 }}>PDFs werden vollständig gelesen – kann 30-60 Sekunden dauern...</div>
               </div>
             )}
 
@@ -331,9 +365,10 @@ Antworte NUR mit einem validen JSON Objekt. Kein Text davor oder danach:
             <div style={{ ...C.card, marginTop: 16, padding: "12px 14px", background: "#f8f8ff" }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: "#555", marginBottom: 6 }}>💡 Tipps für beste Ergebnisse</div>
               <div style={{ fontSize: 11, color: "#777", lineHeight: 1.7 }}>
-                • <strong>LV als GAEB (.x83)</strong> liefert die besten Ergebnisse<br/>
-                • <strong>Ausschreibung als PDF</strong> wird automatisch analysiert<br/>
-                • <strong>Terminplan</strong> wird für Aufgaben-Priorisierung genutzt<br/>
+                • <strong>PDF-Ausschreibung</strong> – wird vollständig gelesen, alle Seiten<br/>
+                • <strong>Bauablaufplan als PDF</strong> – Termine und Abschnitte werden erkannt<br/>
+                • <strong>LV als GAEB (.x83)</strong> – Positionen werden Aufgaben zugewiesen<br/>
+                • <strong>Lagepläne als Bild</strong> – Bereiche werden aus der Karte abgeleitet<br/>
                 • Je mehr Dokumente, desto besser die Struktur
               </div>
             </div>
@@ -343,6 +378,7 @@ Antworte NUR mit einem validen JSON Objekt. Kein Text davor oder danach:
     );
   }
 
+  // ── VORSCHAU ──────────────────────────────────────────────────────────────────
   return (
     <div>
       <div style={{ ...C.card, marginBottom: 16, padding: "16px", background: "#f8fffe", border: "1px solid " + ACCENT + "44" }}>
