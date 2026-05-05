@@ -66,9 +66,14 @@ const fixBS = (b: any) => ({
   mitarbeiter:   toNumArr(b.mitarbeiter),
   fahrzeuge:     toNumArr(b.fahrzeuge),
   equipment:     toNumArr(b.equipment),
-  aufgaben:      Array.isArray(b.aufgaben) ? b.aufgaben : [],
+  aufgaben:      (() => {
+    if (Array.isArray(b.aufgaben)) return b.aufgaben;
+    if (typeof b.aufgaben === "string") {
+      try { const p = JSON.parse(b.aufgaben); return Array.isArray(p) ? p : []; } catch { return []; }
+    }
+    return [];
+  })(),
 });
-
 export default function App() {
   const [tab,         setTab]         = useState(0);
   const [data,        setData]        = useState(INIT);
