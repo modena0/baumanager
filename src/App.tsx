@@ -8,14 +8,13 @@ import { PinModal }           from "./components/PinModal";
 import { LoginScreen }        from "./loginscreen";
 import { Dashboard }          from "./modules/Dashboard";
 import { MitarbeiterTab }     from "./modules/MitarbeiterTab";
-import { BaustellenTab }      from "./modules/BaustellenTab";
+import { BaustellenTab } from "./modules/baustellen/BaustellenTab";
 import { KalenderTab }        from "./modules/KalenderTab";
 import { FuhrparkTab }        from "./modules/FuhrparkTab";
 import { LagerTab }           from "./modules/LagerTab";
 import { KITab }              from "./modules/KITab";
 import { TeamplanungTab }     from "./modules/TeamplanungTab";
 import { BautagebuchTab }     from "./modules/BautagebuchTab";
-import { DokumentAnalyseTab } from "./modules/DokumentAnalyseTab";
 import { KartenTab }          from "./modules/KartenTab";
 import { ROLLE_TABS, KANN }   from "./rollen";
 import type { Rolle }         from "./rollen";
@@ -30,7 +29,7 @@ const MODULE_MAP: Record<number, ComponentType<any>> = {
   7:  KITab,
   8:  TeamplanungTab,
   9:  BautagebuchTab,
-  10: DokumentAnalyseTab,
+
   11: KartenTab,
 };
 
