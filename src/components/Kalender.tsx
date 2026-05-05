@@ -47,15 +47,16 @@ export function TerminForm({ onSave, onCancel, prefill = {} as any, baustellen =
   );
 }
 
-// ── Aufgaben Panel mit Bauphasen ───────────────────────────────────────────────
+// ── Aufgaben Panel mit aufklappbaren Bauphasen ─────────────────────────────────
 export function AufgabenPanel({ baustelle: b, setData }: any) {
-  const [neu, setNeu]           = useState("");
-  const [neuPhase, setNeuPhase] = useState("");
-  const [neuVon, setNeuVon]     = useState("");
-  const [neuBis, setNeuBis]     = useState("");
-  const [editId, setEditId]     = useState<number | null>(null);
-  const [editData, setEditData] = useState<any>({});
-  const [showForm, setShowForm] = useState(false);
+  const [neu, setNeu]             = useState("");
+  const [neuPhase, setNeuPhase]   = useState("");
+  const [neuVon, setNeuVon]       = useState("");
+  const [neuBis, setNeuBis]       = useState("");
+  const [editId, setEditId]       = useState<number | null>(null);
+  const [editData, setEditData]   = useState<any>({});
+  const [showForm, setShowForm]   = useState(false);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   const auf = b.aufgaben || [];
   const done = auf.filter((a: any) => a.erledigt).length;
@@ -113,25 +114,34 @@ export function AufgabenPanel({ baustelle: b, setData }: any) {
     setEditId(null);
   }
 
-  // Aufgaben nach Bauphase gruppieren
+  function toggleCollapse(phase: string) {
+    setCollapsed(c => ({ ...c, [phase]: !c[phase] }));
+  }
+
+  // Aufgaben nach Bauphase gruppieren – Reihenfolge erhalten
+  const phasenOrder: string[] = [];
   const phasen: Record<string, any[]> = {};
   for (const a of auf) {
     const key = a.bauphase || "Ohne Bauphase";
-    if (!phasen[key]) phasen[key] = [];
+    if (!phasen[key]) { phasen[key] = []; phasenOrder.push(key); }
     phasen[key].push(a);
   }
 
-  const phaseColor = (phase: string) => {
-    const colors = ["#4DB6AC", "#378ADD", "#BA7517", "#E24B4A", "#9C27B0", "#1D9E75"];
+  const PHASE_COLORS = ["#4DB6AC", "#378ADD", "#BA7517", "#E24B4A", "#9C27B0", "#1D9E75", "#607D8B"];
+  function phaseColor(phase: string) {
     let hash = 0;
     for (let i = 0; i < phase.length; i++) hash = phase.charCodeAt(i) + ((hash << 5) - hash);
-    return colors[Math.abs(hash) % colors.length];
-  };
+    return PHASE_COLORS[Math.abs(hash) % PHASE_COLORS.length];
+  }
+
+  function fmtDate(d: string) {
+    return new Date(d).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" });
+  }
 
   return (
     <div style={{ borderTop: "1px solid #e8f5f3", padding: "14px 16px", background: "#f8fffe" }}>
 
-      {/* Header */}
+      {/* Header mit Fortschritt */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
         <span style={{ fontSize: 12, fontWeight: 600, color: "#555" }}>Aufgaben</span>
         <div style={{ flex: 1, height: 6, background: "#e0e0e0", borderRadius: 3 }}>
@@ -141,73 +151,90 @@ export function AufgabenPanel({ baustelle: b, setData }: any) {
         <span style={{ fontSize: 11, color: "#bbb" }}>{done}/{auf.length}</span>
       </div>
 
-      {/* Aufgaben nach Bauphase */}
-      {Object.entries(phasen).map(([phase, aufgaben]) => {
+      {/* Bauphasen als aufklappbare Reiter */}
+      {phasenOrder.map(phase => {
+        const aufgaben = phasen[phase];
         const col = phaseColor(phase);
+        const isOpen = !collapsed[phase];
         const phaseDone = aufgaben.filter((a: any) => a.erledigt).length;
-        const ersteAufgabe = aufgaben[0];
-        const datumInfo = ersteAufgabe?.datum_von
-          ? `${new Date(ersteAufgabe.datum_von).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" })}${ersteAufgabe.datum_bis ? " – " + new Date(ersteAufgabe.datum_bis).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" }) : ""}`
+        const phaseProg = aufgaben.length > 0 ? Math.round(phaseDone / aufgaben.length * 100) : 0;
+
+        // Datum aus erster Aufgabe mit Datum
+        const mitDatum = aufgaben.find((a: any) => a.datum_von);
+        const datumLabel = mitDatum?.datum_von
+          ? fmtDate(mitDatum.datum_von) + (mitDatum.datum_bis ? " – " + fmtDate(mitDatum.datum_bis) : "")
           : null;
 
         return (
-          <div key={phase} style={{ marginBottom: 10 }}>
-            {/* Bauphase Header */}
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-              <div style={{ width: 3, height: 14, borderRadius: 2, background: col, flexShrink: 0 }} />
-              <span style={{ fontSize: 11, fontWeight: 700, color: col }}>{phase}</span>
-              {datumInfo && <span style={{ fontSize: 10, color: "#aaa", background: "#f5f5f5", padding: "1px 6px", borderRadius: 6 }}>📅 {datumInfo}</span>}
-              <span style={{ fontSize: 10, color: "#bbb", marginLeft: "auto" }}>{phaseDone}/{aufgaben.length}</span>
+          <div key={phase} style={{ marginBottom: 6, borderRadius: 10, overflow: "hidden", border: "1px solid " + col + "33" }}>
+
+            {/* Bauphase Header – klickbar */}
+            <div onClick={() => toggleCollapse(phase)}
+              style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", background: col + "12", cursor: "pointer", userSelect: "none" }}>
+              <div style={{ width: 4, height: 16, borderRadius: 2, background: col, flexShrink: 0 }} />
+              <span style={{ fontSize: 12, fontWeight: 700, color: col, flex: 1 }}>{phase}</span>
+              {datumLabel && (
+                <span style={{ fontSize: 10, color: "#888", background: "#fff", padding: "1px 7px", borderRadius: 6, border: "1px solid #eee" }}>
+                  📅 {datumLabel}
+                </span>
+              )}
+              <span style={{ fontSize: 10, color: col + "99" }}>{phaseDone}/{aufgaben.length}</span>
+              {/* Mini-Fortschrittsbalken */}
+              <div style={{ width: 40, height: 4, background: "#e0e0e0", borderRadius: 2 }}>
+                <div style={{ height: "100%", width: phaseProg + "%", background: col, borderRadius: 2 }} />
+              </div>
+              <span style={{ fontSize: 12, color: col, transition: "transform 0.2s", transform: isOpen ? "rotate(90deg)" : "rotate(0deg)" }}>›</span>
             </div>
 
-            {/* Aufgaben der Phase */}
-            {aufgaben.map((a: any) => (
-              <div key={a.id} style={{ marginLeft: 9, borderLeft: "1.5px solid " + col + "44" }}>
-                {editId === a.id ? (
-                  // Edit-Modus
-                  <div style={{ padding: "8px 10px", background: "#fff", borderRadius: 8, marginBottom: 4, marginLeft: 6 }}>
-                    <input value={editData.titel} onChange={e => setEditData((x: any) => ({ ...x, titel: e.target.value }))}
-                      style={{ ...C.inp, marginBottom: 6, fontSize: 12 }} placeholder="Aufgabentitel" />
-                    <input value={editData.bauphase} onChange={e => setEditData((x: any) => ({ ...x, bauphase: e.target.value }))}
-                      style={{ ...C.inp, marginBottom: 6, fontSize: 12 }} placeholder="Bauphase (z.B. Bauphase 1)" />
-                    <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
-                      <input type="date" value={editData.datum_von} onChange={e => setEditData((x: any) => ({ ...x, datum_von: e.target.value }))}
-                        style={{ ...C.inp, marginBottom: 0, fontSize: 12, flex: 1 }} />
-                      <span style={{ lineHeight: "36px", color: "#aaa" }}>–</span>
-                      <input type="date" value={editData.datum_bis} onChange={e => setEditData((x: any) => ({ ...x, datum_bis: e.target.value }))}
-                        style={{ ...C.inp, marginBottom: 0, fontSize: 12, flex: 1 }} />
-                    </div>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      <button onClick={saveEdit} style={{ flex: 1, padding: "6px", borderRadius: 8, border: "none", background: ACCENT, color: "#fff", cursor: "pointer", fontSize: 12 }}>✓ Speichern</button>
-                      <button onClick={() => setEditId(null)} style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #eee", background: "#fff", cursor: "pointer", fontSize: 12 }}>Abbrechen</button>
-                    </div>
-                  </div>
-                ) : (
-                  // Anzeige-Modus
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderBottom: "1px solid #f0f0f0" }}>
-                    <div onClick={() => toggle(a.id)} style={{ width: 18, height: 18, borderRadius: 5, border: "2px solid " + (a.erledigt ? ACCENT : "#ccc"), background: a.erledigt ? ACCENT : "#fff", cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      {a.erledigt && <span style={{ color: "#fff", fontSize: 11, fontWeight: 700 }}>✓</span>}
-                    </div>
-                    <span style={{ flex: 1, fontSize: 13, color: a.erledigt ? "#bbb" : "#333", textDecoration: a.erledigt ? "line-through" : "none" }}>{a.titel}</span>
-                    {a.datum_von && a.bauphase && (
-                      <span style={{ fontSize: 9, color: "#bbb" }}>
-                        {new Date(a.datum_von).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" })}
-                        {a.datum_bis ? "–" + new Date(a.datum_bis).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" }) : ""}
-                      </span>
+            {/* Aufgaben – aufklappbar */}
+            {isOpen && (
+              <div style={{ background: "#fff" }}>
+                {aufgaben.map((a: any) => (
+                  <div key={a.id}>
+                    {editId === a.id ? (
+                      <div style={{ padding: "10px 12px", borderBottom: "1px solid #f0f0f0" }}>
+                        <input value={editData.titel} onChange={e => setEditData((x: any) => ({ ...x, titel: e.target.value }))}
+                          style={{ ...C.inp, marginBottom: 6, fontSize: 12 }} placeholder="Aufgabentitel" />
+                        <input value={editData.bauphase} onChange={e => setEditData((x: any) => ({ ...x, bauphase: e.target.value }))}
+                          style={{ ...C.inp, marginBottom: 6, fontSize: 12 }} placeholder="Bauphase (z.B. Bauphase 1)" />
+                        <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                          <input type="date" value={editData.datum_von} onChange={e => setEditData((x: any) => ({ ...x, datum_von: e.target.value }))}
+                            style={{ ...C.inp, marginBottom: 0, fontSize: 12, flex: 1 }} />
+                          <span style={{ lineHeight: "36px", color: "#aaa" }}>–</span>
+                          <input type="date" value={editData.datum_bis} onChange={e => setEditData((x: any) => ({ ...x, datum_bis: e.target.value }))}
+                            style={{ ...C.inp, marginBottom: 0, fontSize: 12, flex: 1 }} />
+                        </div>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button onClick={saveEdit} style={{ flex: 1, padding: "6px", borderRadius: 8, border: "none", background: ACCENT, color: "#fff", cursor: "pointer", fontSize: 12 }}>✓ Speichern</button>
+                          <button onClick={() => setEditId(null)} style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #eee", background: "#fff", cursor: "pointer", fontSize: 12 }}>Abbrechen</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: "1px solid #f5f5f5" }}>
+                        <div onClick={() => toggle(a.id)} style={{ width: 18, height: 18, borderRadius: 5, border: "2px solid " + (a.erledigt ? ACCENT : "#ccc"), background: a.erledigt ? ACCENT : "#fff", cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          {a.erledigt && <span style={{ color: "#fff", fontSize: 11, fontWeight: 700 }}>✓</span>}
+                        </div>
+                        <span style={{ flex: 1, fontSize: 12, color: a.erledigt ? "#bbb" : "#333", textDecoration: a.erledigt ? "line-through" : "none" }}>{a.titel}</span>
+                        {a.datum_von && (
+                          <span style={{ fontSize: 9, color: "#bbb" }}>
+                            {fmtDate(a.datum_von)}{a.datum_bis ? "–" + fmtDate(a.datum_bis) : ""}
+                          </span>
+                        )}
+                        <button onClick={() => startEdit(a)} style={{ background: "none", border: "none", color: "#ccc", cursor: "pointer", fontSize: 12, padding: "0 2px" }}>✎</button>
+                        <button onClick={() => del(a.id)} style={{ background: "none", border: "none", color: "#ccc", cursor: "pointer", fontSize: 14, padding: "0 2px" }}>✕</button>
+                      </div>
                     )}
-                    <button onClick={() => startEdit(a)} style={{ background: "none", border: "none", color: "#ccc", cursor: "pointer", fontSize: 12 }}>✎</button>
-                    <button onClick={() => del(a.id)} style={{ background: "none", border: "none", color: "#ccc", cursor: "pointer", fontSize: 14 }}>✕</button>
                   </div>
-                )}
+                ))}
               </div>
-            ))}
+            )}
           </div>
         );
       })}
 
       {auf.length === 0 && <div style={{ fontSize: 12, color: "#bbb", marginBottom: 8 }}>Noch keine Aufgaben.</div>}
 
-      {/* Neue Aufgabe */}
+      {/* Neue Aufgabe Formular */}
       {showForm ? (
         <div style={{ marginTop: 10, padding: 12, background: "#fff", borderRadius: 10, border: "1px solid #e8eaed" }}>
           <input value={neu} onChange={e => setNeu(e.target.value)}
@@ -229,7 +256,7 @@ export function AufgabenPanel({ baustelle: b, setData }: any) {
           <div style={{ display: "flex", gap: 6 }}>
             <button onClick={add} disabled={!neu.trim()}
               style={{ flex: 1, padding: "8px", borderRadius: 8, border: "none", background: neu.trim() ? ACCENT : "#ccc", color: "#fff", cursor: neu.trim() ? "pointer" : "default", fontSize: 12, fontWeight: 600 }}>
-              + Aufgabe hinzufügen
+              + Hinzufügen
             </button>
             <button onClick={() => { setShowForm(false); setNeu(""); setNeuPhase(""); setNeuVon(""); setNeuBis(""); }}
               style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #eee", background: "#fff", cursor: "pointer", fontSize: 12 }}>
@@ -239,7 +266,7 @@ export function AufgabenPanel({ baustelle: b, setData }: any) {
         </div>
       ) : (
         <button onClick={() => setShowForm(true)}
-          style={{ marginTop: 10, width: "100%", padding: "8px", borderRadius: 10, border: "1.5px dashed #e8eaed", background: "transparent", cursor: "pointer", fontSize: 12, color: "#888" }}>
+          style={{ marginTop: 8, width: "100%", padding: "8px", borderRadius: 10, border: "1.5px dashed #e8eaed", background: "transparent", cursor: "pointer", fontSize: 12, color: "#888" }}>
           + Neue Aufgabe
         </button>
       )}
