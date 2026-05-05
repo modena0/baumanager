@@ -29,7 +29,6 @@ const MODULE_MAP: Record<number, ComponentType<any>> = {
   7:  KITab,
   8:  TeamplanungTab,
   9:  BautagebuchTab,
-
   11: KartenTab,
 };
 
