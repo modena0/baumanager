@@ -11,6 +11,7 @@ serve(async (req) => {
   try {
     const { prompt, system, max_tokens, file_ids, dokumente } = await req.json()
     const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_KEY") ?? ""
+
     const content: any[] = []
 
     // PDFs per file_id (Anthropic Files API)
@@ -18,15 +19,12 @@ serve(async (req) => {
       for (const file_id of file_ids) {
         content.push({
           type: "document",
-          source: {
-            type: "file",
-            file_id: file_id,
-          },
+          source: { type: "file", file_id },
         })
       }
     }
 
-    // Bilder und Texte direkt
+    // Bilder und Texte
     if (dokumente && dokumente.length > 0) {
       for (const dok of dokumente) {
         if (dok.type === "image_base64") {
@@ -52,7 +50,7 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
-        max_tokens: max_tokens || 500,
+        max_tokens: max_tokens || 1000,
         system: system || "Du bist ein Assistent.",
         messages: [{ role: "user", content }],
       }),
