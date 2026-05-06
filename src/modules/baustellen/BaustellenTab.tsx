@@ -58,15 +58,26 @@ export function BaustellenTab({ data, setData, openEdit, deleteItem, selectedBS,
   };
 
   // ── Neue Baustelle ────────────────────────────────────────────────────────────
-  async function speichernNeu(formData: any) {
-    const { data: neu } = await supabase.from("baustellen").insert([formData]).select();
-    if (neu?.[0]) {
-      const fixed = {
-        ...neu[0],
-        mitarbeiter: [], fahrzeuge: [], equipment: [],
-        aufgaben: Array.isArray(neu[0].aufgaben) ? neu[0].aufgaben : [],
-        anforderungen: Array.isArray(neu[0].anforderungen) ? neu[0].anforderungen : [],
-      };
+ async function speichernNeu(formData: any) {
+  const { data: neu } = await supabase.from("baustellen").insert([formData]).select();
+  if (neu?.[0]) {
+    // aufgaben parsen falls Supabase sie als String zurückgibt
+    let aufgaben = neu[0].aufgaben;
+    if (typeof aufgaben === "string") {
+      try { aufgaben = JSON.parse(aufgaben); } catch { aufgaben = []; }
+    }
+    if (!Array.isArray(aufgaben)) aufgaben = [];
+
+    const fixed = {
+      ...neu[0],
+      mitarbeiter: [],
+      fahrzeuge: [],
+      equipment: [],
+      aufgaben,
+      anforderungen: Array.isArray(neu[0].anforderungen) ? neu[0].anforderungen : [],
+    };
+    setData((d: any) => ({ ...d, baustellen: [...d.baustellen, fixed] }));
+    // ... rest bleibt gleich 
       setData((d: any) => ({ ...d, baustellen: [...d.baustellen, fixed] }));
       // Geocoding
       if (formData.ort) {
