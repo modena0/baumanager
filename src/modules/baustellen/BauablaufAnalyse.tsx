@@ -132,11 +132,15 @@ Antworte NUR mit JSON Array:
 
       if (!res.ok) throw new Error(`Fehler ${res.status}`);
       const d = await res.json();
-      if (d.error) throw new Error(d.error);
+      if (d.error) {
+        if (d.error.includes("rate limit")) throw new Error("API Rate Limit erreicht – bitte 1 Minute warten und erneut versuchen.");
+        if (d.error.includes("file")) throw new Error("PDF konnte nicht gelesen werden – bitte erneut versuchen.");
+        throw new Error(d.error.slice(0, 120));
+      }
 
       const text = d.text || "";
       const jsonMatch = text.match(/\[[\s\S]*\]/);
-      if (!jsonMatch) throw new Error("KI hat kein gültiges JSON zurückgegeben: " + text.slice(0, 100));
+      if (!jsonMatch) throw new Error("KI hat kein gültiges JSON zurückgegeben: " + text.slice(0, 150));
 
       const phasen: { bauphase: string; datum_von: string; datum_bis: string; aufgaben: string[] }[] = JSON.parse(jsonMatch[0]);
 
