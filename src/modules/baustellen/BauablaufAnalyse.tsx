@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { ACCENT, C } from "../../lib/constants";
+import * as XLSX from "xlsx";
 
 const SUPABASE_URL = "https://npcygxhgwqodmnqjwjnp.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wY3lneGhnd3FvZG1ucWp3am5wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY0MzA5MDksImV4cCI6MjA5MjAwNjkwOX0.VCW_I_W9SVGA5DPi5R_q7leiy5t335sVucM75eYiWWY";
@@ -52,6 +53,28 @@ async function bildZuBase64(file: File): Promise<string> {
   return arrayBufferToBase64(buffer);
 }
 
+// Excel → CSV-Text (alle Sheets werden zusammengeführt)
+async function excelZuText(file: File): Promise<string> {
+  const buffer = await file.arrayBuffer();
+  const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
+  
+  const teile: string[] = [];
+  for (const sheetName of workbook.SheetNames) {
+    const sheet = workbook.Sheets[sheetName];
+    const csv = XLSX.utils.sheet_to_csv(sheet, { blankrows: false });
+    if (csv.trim()) {
+      teile.push(`=== Tabellenblatt: ${sheetName} ===\n${csv}`);
+    }
+  }
+  return teile.join("\n\n");
+}
+
+function dateiIcon(datei: File): string {
+  if (datei.name.toLowerCase().endsWith(".pdf")) return "📄";
+  if (datei.name.match(/\.(xlsx|xls|xlsm)$/i)) return "📊";
+  return "🖼";
+}
+
 export function BauablaufAnalyse({ onAufgaben, onSkip }: Props) {
   const [datei,       setDatei]       = useState<File | null>(null);
   const [analyzing,   setAnalyzing]   = useState(false);
@@ -71,24 +94,16 @@ export function BauablaufAnalyse({ onAufgaben, onSkip }: Props) {
     setFehler("");
 
     try {
-      const isPDF = datei.type === "application/pdf" || datei.name.toLowerCase().endsWith(".pdf");
-      const isImg = datei.type.startsWith("image/");
+      const isPDF  = datei.type === "application/pdf" || datei.name.toLowerCase().endsWith(".pdf");
+      const isImg  = datei.type.startsWith("image/");
+      const isXLSX = datei.name.match(/\.(xlsx|xls|xlsm)$/i);
       let body: any;
 
-      if (isPDF) {
-        setFortschritt("📤 PDF wird hochgeladen...");
-        const file_id = await uploadPDF(datei);
-        setFortschritt("🤖 KI analysiert Bauablaufplan...");
-        body = {
-          file_ids: [file_id],
-          max_tokens: 4000,
-          system: "Du bist ein Bau-Experte. Lies den Bauablaufplan vollständig und genau. Antworte NUR mit validem JSON Array, kein Text davor oder danach, kein Markdown.",
-          prompt: `Analysiere diesen Bauablaufplan vollständig.
+      const systemPrompt = "Du bist ein Bau-Experte. Analysiere den Bauablaufplan vollständig und genau. Antworte NUR mit validem JSON Array, kein Text davor oder danach, kein Markdown.";
+      const jsonPrompt = `Analysiere diesen Bauablaufplan vollständig.
 Erkenne ALLE Bauphasen mit Datum und ALLE Teilaufgaben mit ihren EIGENEN Start- und Enddaten.
 
-WICHTIG: Jede Aufgabe hat im Gantt-Chart einen eigenen Balken mit eigenem Zeitraum.
-Lies für jede Aufgabe den genauen Zeitraum des Balkens ab – nicht einfach das Phasendatum übernehmen!
-Die Daten stehen als Spaltenüberschriften (KW oder Datum) oben im Diagramm.
+WICHTIG: Jede Aufgabe hat einen eigenen Zeitraum. Lies die Daten so genau wie möglich ab.
 
 Antworte NUR mit diesem JSON Array:
 [
@@ -100,16 +115,40 @@ Antworte NUR mit diesem JSON Array:
       { "titel": "Verkehrssicherung einrichten", "datum_von": "2026-04-13", "datum_bis": "2026-04-14" },
       { "titel": "Baumschutz herstellen", "datum_von": "2026-04-13", "datum_bis": "2026-04-20" }
     ]
-  },
-  {
-    "bauphase": "Bauphase 2",
-    "datum_von": "2026-04-21",
-    "datum_bis": "2026-06-04",
-    "aufgaben": [
-      { "titel": "Aufgabe 1", "datum_von": "2026-04-21", "datum_bis": "2026-04-30" }
-    ]
   }
-]`,
+]`;
+
+      if (isPDF) {
+        setFortschritt("📤 PDF wird hochgeladen...");
+        const file_id = await uploadPDF(datei);
+        setFortschritt("🤖 KI analysiert Bauablaufplan...");
+        body = {
+          file_ids: [file_id],
+          max_tokens: 4000,
+          system: systemPrompt,
+          prompt: `Analysiere diesen Bauablaufplan vollständig.
+Erkenne ALLE Bauphasen mit Datum und ALLE Teilaufgaben mit ihren EIGENEN Start- und Enddaten.
+
+WICHTIG: Jede Aufgabe hat im Gantt-Chart einen eigenen Balken mit eigenem Zeitraum.
+Lies für jede Aufgabe den genauen Zeitraum des Balkens ab – nicht einfach das Phasendatum übernehmen!
+Die Daten stehen als Spaltenüberschriften (KW oder Datum) oben im Diagramm.
+
+${jsonPrompt}`,
+        };
+      } else if (isXLSX) {
+        setFortschritt("📊 Excel wird gelesen...");
+        const text = await excelZuText(datei);
+        setFortschritt("🤖 KI analysiert Bauablaufplan...");
+        body = {
+          dokumente: [{ type: "text", data: text, name: datei.name }],
+          max_tokens: 4000,
+          system: systemPrompt,
+          prompt: `Die folgende Excel-Tabelle enthält einen Bauablaufplan.
+Erkenne ALLE Bauphasen und ALLE Aufgaben mit ihren Zeiträumen.
+Spalten wie "Start", "Beginn", "Ende", "Fertig", "Von", "Bis" enthalten die Termine.
+Zeilen mit Einrückung oder Unterpunkten sind Teilaufgaben einer Bauphase.
+
+${jsonPrompt}`,
         };
       } else if (isImg) {
         setFortschritt("🖼 Bild wird vorbereitet...");
@@ -121,11 +160,10 @@ Antworte NUR mit diesem JSON Array:
           system: "Du bist ein Bau-Experte. Lies den Bauablaufplan vollständig. Antworte NUR mit validem JSON Array.",
           prompt: `Analysiere diesen Bauablaufplan.
 Erkenne alle Bauphasen mit Datum und alle Aufgaben mit ihren EIGENEN Zeiträumen aus den Gantt-Balken.
-Antworte NUR mit JSON Array:
-[{"bauphase":"Bauphase 1","datum_von":"2026-04-13","datum_bis":"2026-04-20","aufgaben":[{"titel":"Aufgabe 1","datum_von":"2026-04-13","datum_bis":"2026-04-15"}]}]`,
+${jsonPrompt}`,
         };
       } else {
-        throw new Error("Bitte PDF oder Bild (JPG/PNG) hochladen.");
+        throw new Error("Bitte PDF, Excel (.xlsx) oder Bild (JPG, PNG) hochladen.");
       }
 
       const res = await fetch(`${SUPABASE_URL}/functions/v1/ki_chat`, {
@@ -141,7 +179,7 @@ Antworte NUR mit JSON Array:
       const d = await res.json();
       if (d.error) {
         if (d.error.includes("rate limit")) throw new Error("API Rate Limit erreicht – bitte 1 Minute warten und erneut versuchen.");
-        if (d.error.includes("file")) throw new Error("PDF konnte nicht gelesen werden – bitte erneut versuchen.");
+        if (d.error.includes("file")) throw new Error("Datei konnte nicht gelesen werden – bitte erneut versuchen.");
         throw new Error(d.error.slice(0, 120));
       }
 
@@ -151,7 +189,7 @@ Antworte NUR mit JSON Array:
 
       const phasen: { bauphase: string; datum_von: string; datum_bis: string; aufgaben: any[] }[] = JSON.parse(jsonMatch[0]);
 
-      // Aufgaben mit IDs bauen – unterstützt sowohl String als auch Objekt mit Datum
+      // Aufgaben mit IDs bauen
       const aufgaben: Aufgabe[] = [];
       let id = 1;
       for (const phase of phasen) {
@@ -162,7 +200,6 @@ Antworte NUR mit JSON Array:
             titel: isObj ? a.titel : a,
             erledigt: false,
             bauphase: phase.bauphase,
-            // Eigenes Aufgaben-Datum wenn vorhanden, sonst Phasendatum
             datum_von: (isObj && a.datum_von) ? a.datum_von : phase.datum_von || null,
             datum_bis: (isObj && a.datum_bis) ? a.datum_bis : phase.datum_bis || null,
           });
@@ -192,7 +229,7 @@ Antworte NUR mit JSON Array:
         style={{ border: "2px dashed " + (datei ? ACCENT : "#e8eaed"), borderRadius: 12, padding: "16px 20px", textAlign: "center", cursor: "pointer", background: datei ? "#f8fffe" : "#fafafa", marginBottom: 10 }}>
         {datei ? (
           <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "center" }}>
-            <span style={{ fontSize: 20 }}>{datei.name.endsWith(".pdf") ? "📄" : "🖼"}</span>
+            <span style={{ fontSize: 20 }}>{dateiIcon(datei)}</span>
             <div style={{ textAlign: "left" }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: ACCENT }}>{datei.name}</div>
               <div style={{ fontSize: 10, color: "#aaa" }}>{Math.round(datei.size / 1024)} KB</div>
@@ -204,10 +241,10 @@ Antworte NUR mit JSON Array:
           <div>
             <div style={{ fontSize: 24, marginBottom: 4 }}>📂</div>
             <div style={{ fontSize: 12, color: "#888" }}>Bauablaufplan hochladen</div>
-            <div style={{ fontSize: 10, color: "#bbb", marginTop: 2 }}>PDF oder Bild (JPG, PNG)</div>
+            <div style={{ fontSize: 10, color: "#bbb", marginTop: 2 }}>PDF, Excel (.xlsx) oder Bild (JPG, PNG)</div>
           </div>
         )}
-        <input ref={fileRef} type="file" accept=".pdf,.jpg,.jpeg,.png"
+        <input ref={fileRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.xlsx,.xls,.xlsm"
           style={{ display: "none" }} onChange={e => handleFile(e.target.files)} />
       </div>
 
