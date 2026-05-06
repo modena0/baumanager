@@ -14,10 +14,8 @@ const INIT = {
 };
 
 export function NeuerBaustellenDialog({ onSave, onClose, isMobile }: Props) {
-  const [schritt,   setSchritt]   = useState<"form" | "analyse">("form");
-  const [form,      setForm]      = useState(INIT);
-  const [aufgaben,  setAufgaben]  = useState<any[]>([]);
-  const [kiLaeuft,  setKiLaeuft]  = useState(false);
+  const [schritt, setSchritt] = useState<"form" | "analyse">("form");
+  const [form,    setForm]    = useState(INIT);
 
   const upd = (field: string) => (e: any) => setForm(f => ({ ...f, [field]: e.target.value }));
 
@@ -26,19 +24,17 @@ export function NeuerBaustellenDialog({ onSave, onClose, isMobile }: Props) {
     setSchritt("analyse");
   }
 
-  function aufgabenUebernehmen(neueAufgaben: any[]) {
-    setAufgaben(neueAufgaben);
-    speichern(neueAufgaben);
-  }
-
-  function speichern(finalAufgaben = aufgaben) {
+  // Baut das fertige Objekt und ruft onSave genau EINMAL auf
+  function speichern(aufgaben: any[] = []) {
     const p: any = {
       ...form,
-      anforderungen: form.anforderungen ? form.anforderungen.split(",").map((s: string) => s.trim()).filter(Boolean) : [],
+      anforderungen: form.anforderungen
+        ? form.anforderungen.split(",").map((s: string) => s.trim()).filter(Boolean)
+        : [],
       mitarbeiter: [],
       fahrzeuge: [],
       equipment: [],
-      aufgaben: finalAufgaben,
+      aufgaben,
       start: form.start || null,
       ende: form.ende || null,
     };
@@ -52,7 +48,6 @@ export function NeuerBaustellenDialog({ onSave, onClose, isMobile }: Props) {
 
         {isMobile && <div style={{ width: 40, height: 4, background: "#ddd", borderRadius: 2, margin: "0 auto 16px" }} />}
 
-        {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, paddingBottom: 12, borderBottom: "1px solid #f5f5f5" }}>
           <div style={{ fontSize: 17, fontWeight: 700, color: "#222" }}>
             {schritt === "form" ? "⛏ Neue Baustelle" : "📋 Bauablaufplan"}
@@ -65,15 +60,12 @@ export function NeuerBaustellenDialog({ onSave, onClose, isMobile }: Props) {
           )}
         </div>
 
-        {/* Schritt 1: Grunddaten */}
         {schritt === "form" && (
           <div>
             <label style={C.lbl}>Name *</label>
             <input style={C.inp} value={form.name} onChange={upd("name")} placeholder="z.B. Anbindung Wielandstraße" autoFocus />
-
             <label style={C.lbl}>Ort / Adresse</label>
             <input style={C.inp} value={form.ort} onChange={upd("ort")} placeholder="z.B. Budapester Straße, Dresden" />
-
             <label style={C.lbl}>Kategorie</label>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
               {BS_KAT.map(k => (
@@ -83,29 +75,18 @@ export function NeuerBaustellenDialog({ onSave, onClose, isMobile }: Props) {
                 </button>
               ))}
             </div>
-
             <label style={C.lbl}>Status</label>
             <select style={C.inp} value={form.status} onChange={upd("status")}>
               {["geplant", "aktiv", "pausiert", "abgeschlossen"].map(s => <option key={s} value={s}>{s}</option>)}
             </select>
-
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <div>
-                <label style={C.lbl}>Start</label>
-                <input type="date" style={C.inp} value={form.start} onChange={upd("start")} />
-              </div>
-              <div>
-                <label style={C.lbl}>Ende</label>
-                <input type="date" style={C.inp} value={form.ende} onChange={upd("ende")} />
-              </div>
+              <div><label style={C.lbl}>Start</label><input type="date" style={C.inp} value={form.start} onChange={upd("start")} /></div>
+              <div><label style={C.lbl}>Ende</label><input type="date" style={C.inp} value={form.ende} onChange={upd("ende")} /></div>
             </div>
-
             <label style={C.lbl}>Beschreibung</label>
             <input style={C.inp} value={form.beschreibung} onChange={upd("beschreibung")} placeholder="Kurze Projektbeschreibung" />
-
             <label style={C.lbl}>Anforderungen (kommagetrennt)</label>
             <input style={C.inp} value={form.anforderungen} onChange={upd("anforderungen")} placeholder="z.B. Führerschein C, Tiefbau" />
-
             <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
               <button style={{ ...C.btnS, flex: 1 }} onClick={onClose}>Abbrechen</button>
               <button onClick={weiter} disabled={!form.name.trim()}
@@ -116,14 +97,11 @@ export function NeuerBaustellenDialog({ onSave, onClose, isMobile }: Props) {
           </div>
         )}
 
-        {/* Schritt 2: Bauablaufplan */}
         {schritt === "analyse" && (
-          <div>
-            <BauablaufAnalyse
-              onAufgaben={aufgabenUebernehmen}
-              onSkip={() => speichern([])}
-            />
-          </div>
+          <BauablaufAnalyse
+            onAufgaben={(aufgaben) => speichern(aufgaben)}
+            onSkip={() => speichern([])}
+          />
         )}
       </div>
     </div>
