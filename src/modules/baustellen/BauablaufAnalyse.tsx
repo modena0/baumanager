@@ -84,9 +84,11 @@ export function BauablaufAnalyse({ onAufgaben, onSkip }: Props) {
           max_tokens: 4000,
           system: "Du bist ein Bau-Experte. Lies den Bauablaufplan vollständig und genau. Antworte NUR mit validem JSON Array, kein Text davor oder danach, kein Markdown.",
           prompt: `Analysiere diesen Bauablaufplan vollständig.
-Erkenne ALLE Bauphasen mit ihren exakten Start- und Enddaten sowie ALLE Teilaufgaben pro Phase.
-Bauphasen stehen links als Überschriften (z.B. "Bauphase 1", "Bauphase 2" etc.) mit Datum daneben.
-Darunter stehen die Teilaufgaben als Zeilen.
+Erkenne ALLE Bauphasen mit Datum und ALLE Teilaufgaben mit ihren EIGENEN Start- und Enddaten.
+
+WICHTIG: Jede Aufgabe hat im Gantt-Chart einen eigenen Balken mit eigenem Zeitraum.
+Lies für jede Aufgabe den genauen Zeitraum des Balkens ab – nicht einfach das Phasendatum übernehmen!
+Die Daten stehen als Spaltenüberschriften (KW oder Datum) oben im Diagramm.
 
 Antworte NUR mit diesem JSON Array:
 [
@@ -94,13 +96,18 @@ Antworte NUR mit diesem JSON Array:
     "bauphase": "Bauphase 1",
     "datum_von": "2026-04-13",
     "datum_bis": "2026-04-20",
-    "aufgaben": ["Verkehrssicherung einrichten", "Baumschutz herstellen"]
+    "aufgaben": [
+      { "titel": "Verkehrssicherung einrichten", "datum_von": "2026-04-13", "datum_bis": "2026-04-14" },
+      { "titel": "Baumschutz herstellen", "datum_von": "2026-04-13", "datum_bis": "2026-04-20" }
+    ]
   },
   {
     "bauphase": "Bauphase 2",
     "datum_von": "2026-04-21",
     "datum_bis": "2026-06-04",
-    "aufgaben": ["Aufgabe 1", "Aufgabe 2"]
+    "aufgaben": [
+      { "titel": "Aufgabe 1", "datum_von": "2026-04-21", "datum_bis": "2026-04-30" }
+    ]
   }
 ]`,
         };
@@ -113,9 +120,9 @@ Antworte NUR mit diesem JSON Array:
           max_tokens: 4000,
           system: "Du bist ein Bau-Experte. Lies den Bauablaufplan vollständig. Antworte NUR mit validem JSON Array.",
           prompt: `Analysiere diesen Bauablaufplan.
-Erkenne alle Bauphasen mit Start- und Enddatum sowie alle Teilaufgaben.
+Erkenne alle Bauphasen mit Datum und alle Aufgaben mit ihren EIGENEN Zeiträumen aus den Gantt-Balken.
 Antworte NUR mit JSON Array:
-[{"bauphase":"Bauphase 1","datum_von":"2026-04-13","datum_bis":"2026-04-20","aufgaben":["Aufgabe 1"]}]`,
+[{"bauphase":"Bauphase 1","datum_von":"2026-04-13","datum_bis":"2026-04-20","aufgaben":[{"titel":"Aufgabe 1","datum_von":"2026-04-13","datum_bis":"2026-04-15"}]}]`,
         };
       } else {
         throw new Error("Bitte PDF oder Bild (JPG/PNG) hochladen.");
@@ -142,20 +149,22 @@ Antworte NUR mit JSON Array:
       const jsonMatch = text.match(/\[[\s\S]*\]/);
       if (!jsonMatch) throw new Error("KI hat kein gültiges JSON zurückgegeben: " + text.slice(0, 150));
 
-      const phasen: { bauphase: string; datum_von: string; datum_bis: string; aufgaben: string[] }[] = JSON.parse(jsonMatch[0]);
+      const phasen: { bauphase: string; datum_von: string; datum_bis: string; aufgaben: any[] }[] = JSON.parse(jsonMatch[0]);
 
-      // Aufgaben mit IDs bauen
+      // Aufgaben mit IDs bauen – unterstützt sowohl String als auch Objekt mit Datum
       const aufgaben: Aufgabe[] = [];
       let id = 1;
       for (const phase of phasen) {
-        for (const titel of (phase.aufgaben || [])) {
+        for (const a of (phase.aufgaben || [])) {
+          const isObj = typeof a === "object" && a !== null;
           aufgaben.push({
             id: id++,
-            titel,
+            titel: isObj ? a.titel : a,
             erledigt: false,
             bauphase: phase.bauphase,
-            datum_von: phase.datum_von || null,
-            datum_bis: phase.datum_bis || null,
+            // Eigenes Aufgaben-Datum wenn vorhanden, sonst Phasendatum
+            datum_von: (isObj && a.datum_von) ? a.datum_von : phase.datum_von || null,
+            datum_bis: (isObj && a.datum_bis) ? a.datum_bis : phase.datum_bis || null,
           });
         }
       }
