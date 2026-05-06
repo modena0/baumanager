@@ -4,8 +4,16 @@ import { supabase } from "../../lib/supabase";
 import { BaustellenKarte } from "./BaustellenKarte";
 import { NeuerBaustellenDialog } from "./NeuerBaustellenDialog";
 
-const toNumArr = (arr: any[]): number[] =>
+const toNumArr = (arr: any): number[] =>
   (Array.isArray(arr) ? arr : []).map((i: any) => Number(i)).filter((i: number) => !isNaN(i));
+
+function parseAufgaben(raw: any): any[] {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === "string") {
+    try { const p = JSON.parse(raw); return Array.isArray(p) ? p : []; } catch { return []; }
+  }
+  return [];
+}
 
 export function BaustellenTab({ data, setData, openEdit, deleteItem, selectedBS, setSelectedBS, rolle, currentUser, isMobile }: any) {
   const [expId,   setExpId]   = useState<number | null>(null);
@@ -57,29 +65,25 @@ export function BaustellenTab({ data, setData, openEdit, deleteItem, selectedBS,
     }));
   };
 
-  // ── Neue Baustelle ────────────────────────────────────────────────────────────
- async function speichernNeu(formData: any) {
-  const { data: neu } = await supabase.from("baustellen").insert([formData]).select();
-  if (neu?.[0]) {
-    // aufgaben parsen falls Supabase sie als String zurückgibt
-    let aufgaben = neu[0].aufgaben;
-    if (typeof aufgaben === "string") {
-      try { aufgaben = JSON.parse(aufgaben); } catch { aufgaben = []; }
-    }
-    if (!Array.isArray(aufgaben)) aufgaben = [];
+  // ── Neue Baustelle speichern ──────────────────────────────────────────────────
+  async function speichernNeu(formData: any) {
+    // Dialog SOFORT schließen – verhindert doppeltes Rendern
+    setShowNeu(false);
 
-    const fixed = {
-      ...neu[0],
-      mitarbeiter: [],
-      fahrzeuge: [],
-      equipment: [],
-      aufgaben,
-      anforderungen: Array.isArray(neu[0].anforderungen) ? neu[0].anforderungen : [],
-    };
-    setData((d: any) => ({ ...d, baustellen: [...d.baustellen, fixed] }));
-    // ... rest bleibt gleich 
+    const { data: neu } = await supabase.from("baustellen").insert([formData]).select();
+    if (neu?.[0]) {
+      const aufgaben = parseAufgaben(neu[0].aufgaben);
+      const fixed = {
+        ...neu[0],
+        mitarbeiter: [],
+        fahrzeuge: [],
+        equipment: [],
+        aufgaben,
+        anforderungen: Array.isArray(neu[0].anforderungen) ? neu[0].anforderungen : [],
+      };
       setData((d: any) => ({ ...d, baustellen: [...d.baustellen, fixed] }));
-      // Geocoding
+
+      // Geocoding im Hintergrund
       if (formData.ort) {
         try {
           const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(formData.ort)}&format=json&limit=1`, { headers: { "Accept-Language": "de" } });
@@ -92,7 +96,6 @@ export function BaustellenTab({ data, setData, openEdit, deleteItem, selectedBS,
         } catch { /* ignorieren */ }
       }
     }
-    setShowNeu(false);
   }
 
   // ── Filtern ───────────────────────────────────────────────────────────────────
